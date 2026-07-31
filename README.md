@@ -10,9 +10,4 @@ $$
 x + \sqrt{x + \sqrt{x + \sqrt{x + \dots}}} = y
 $$
 
-Using:
-$$ 
-y = \sqrt{x + y} 
-$$
-
 ---
