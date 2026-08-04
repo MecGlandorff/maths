@@ -1,7 +1,7 @@
 
 
 // Project for infinite nested radical
-
+// Still in progress.
 
 #include <iostream>
 #include <cmath>
