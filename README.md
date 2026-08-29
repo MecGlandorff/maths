@@ -1,40 +1,17 @@
-In this repository I try some simple math stuff in different programming languages. 
+# Maths
 
-First project:
-Solve for value z in an infinite nested radical function.
-When you enter z it returns the corresponding x-value
+In this repository I try some simple math problems in different programming languages.
 
----
+## Infinite nested radical
 
-$$
-x + \sqrt{x + \sqrt{x + \sqrt{x + \dots}}} = y
-$$
-
----
-In this repository I try some simple math stuff in different programming languages. 
-
-First project:
-Solve for value z in an infinite nested radical function.
-When you enter z it returns the corresponding x-value
-
----
-
-$$
-x + \sqrt{x + \sqrt{x + \sqrt{x + \dots}}} = y
-In this repository I try some simple math stuff in different programming languages. 
-
-First project:
-Solve for value z in an infinite nested radical function.
-When you enter z it returns the corresponding x-value
-
----
+The first project solves for `x` when the user enters `y` in:
 
 $$
 x + \sqrt{x + \sqrt{x + \sqrt{x + \dots}}} = y
 $$
 
----
-xxx
+The nested radical equals $\sqrt{y}$, so the solution is:
 
----
-xxx
+$$
+x = y - \sqrt{y}
+$$
