@@ -34,3 +34,17 @@ Compile and run it with a C++17 compiler:
 c++ -std=c++17 -O2 mandelbrot.cpp -o mandelbrot
 ./mandelbrot
 ```
+
+## Ulam prime spiral
+
+The third project places the positive integers in a square spiral and marks
+every prime number with `##`. The primes form surprisingly strong diagonal
+patterns even though they become less common as the numbers grow.
+
+Compile it with a C++17 compiler and optionally choose an odd grid size from 5
+to 99 (the default is 31):
+
+```sh
+c++ -std=c++17 -O2 ulam_spiral.cpp -o ulam_spiral
+./ulam_spiral 41
+```
