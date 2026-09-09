@@ -48,3 +48,15 @@ to 99 (the default is 31):
 c++ -std=c++17 -O2 ulam_spiral.cpp -o ulam_spiral
 ./ulam_spiral 41
 ```
+
+## Pascal / Sierpinski triangle
+
+Mark only the odd numbers in Pascal's triangle and a Sierpinski pattern appears.
+`pascal_sierpinski.cpp` draws those coefficients as `*`. It checks whether
+`column & (row - column)` is zero, avoiding factorials and integer overflow.
+Choose 1-64 rows (default: 32); powers of two show complete stages of the pattern.
+
+```sh
+c++ -std=c++17 -O2 pascal_sierpinski.cpp -o pascal_sierpinski
+./pascal_sierpinski 32
+```
