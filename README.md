@@ -91,3 +91,24 @@ c++ -std=c++17 -O2 collatz.cpp -o collatz
 ./collatz 27
 ./collatz 27 20
 ```
+
+## Birthday paradox
+
+How many people are needed before a shared birthday becomes more likely than
+not? `birthday_paradox.cpp` calculates the probability of at least one matching
+pair and draws a table with percentage bars. At 23 people it is about 50.73%.
+
+The model assumes independent birthdays distributed uniformly across 365 days,
+ignoring leap days. It computes the complement of all birthdays being different:
+
+$$
+P(\text{shared}) = 1 - \prod_{k=0}^{n-1}\frac{365-k}{365}, \qquad 0 \leq n \leq 365
+$$
+
+For zero or one person the probability is zero; for 366 people it is one.
+Choose 0-366 people to highlight in the table (default: 23).
+
+```sh
+c++ -std=c++17 -O2 birthday_paradox.cpp -o birthday_paradox
+./birthday_paradox 23
+```
