@@ -112,3 +112,27 @@ Choose 0-366 people to highlight in the table (default: 23).
 c++ -std=c++17 -O2 birthday_paradox.cpp -o birthday_paradox
 ./birthday_paradox 23
 ```
+
+## Pi convergence race
+
+`pi_convergence.cpp` compares two alternating series for $\pi$:
+
+$$
+\text{Leibniz:}\quad \pi = 4\sum_{k=0}^{\infty}\frac{(-1)^k}{2k+1}
+$$
+
+$$
+\text{Nilakantha:}\quad \pi = 3 + \sum_{k=1}^{\infty}\frac{4(-1)^{k+1}}{(2k)(2k+1)(2k+2)}
+$$
+
+Each update adds one term to both series (Nilakantha starts at 3). A table at
+1, 10, 100, ... updates, plus your final count, shows the estimates and their
+absolute errors against the standard library's value of $\pi$. Nilakantha
+converges much faster, but floating-point rounding eventually limits accuracy;
+a displayed zero error does not mean the result is mathematically exact.
+Choose 1-1000000 updates (default: 10000).
+
+```sh
+c++ -std=c++17 -O2 pi_convergence.cpp -o pi_convergence
+./pi_convergence 10000
+```
