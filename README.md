@@ -73,3 +73,21 @@ Both integer frequencies must be 1-9; the defaults are `3 2`.
 c++ -std=c++17 -O2 lissajous.cpp -o lissajous
 ./lissajous 5 4
 ```
+
+## Collatz explorer
+
+Start with a positive integer: halve it when even, or replace it with $3n+1$
+when odd. `collatz.cpp` prints the trajectory, steps to reach 1, and peak value.
+For example, 27 takes 111 steps and reaches 9232. Whether **every** positive
+integer eventually reaches 1 is still an unproved conjecture.
+
+The default start is 27. An optional second argument caps the steps at 1-10000
+(default: 10000). The program stops with exit code 2 if that limit is reached
+before 1, or before a calculation would overflow a 64-bit unsigned integer;
+invalid arguments return 1.
+
+```sh
+c++ -std=c++17 -O2 collatz.cpp -o collatz
+./collatz 27
+./collatz 27 20
+```
