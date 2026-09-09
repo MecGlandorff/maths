@@ -60,3 +60,16 @@ Choose 1-64 rows (default: 32); powers of two show complete stages of the patter
 c++ -std=c++17 -O2 pascal_sierpinski.cpp -o pascal_sierpinski
 ./pascal_sierpinski 32
 ```
+
+## Lissajous curves
+
+Combine two oscillations, $x(t) = \cos(at)$ and $y(t) = \sin(bt)$, into a
+closed curve. `lissajous.cpp` samples one complete period on an ASCII canvas.
+Try `1 1` for a circle in mathematical coordinates (its terminal appearance
+depends on character proportions), or `3 2` and `5 4` for interlaced loops.
+Both integer frequencies must be 1-9; the defaults are `3 2`.
+
+```sh
+c++ -std=c++17 -O2 lissajous.cpp -o lissajous
+./lissajous 5 4
+```
