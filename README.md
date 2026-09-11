@@ -249,3 +249,23 @@ vertically to include that overshoot. Choose 1-50 terms (default: 8).
 c++ -std=c++17 -O2 fourier_square_wave.cpp -o fourier_square_wave
 ./fourier_square_wave 20
 ```
+
+## Galton board
+
+`galton_board.cpp` sends balls through independent, equally likely left/right
+choices. The number of right turns selects the final bin. A histogram compares
+observed counts with the exact binomial probabilities for $n$ rows:
+
+$$
+P(k) = \binom{n}{k}2^{-n}
+$$
+
+`#` marks observed counts, and `|` marks expected counts on the same scale.
+Optional arguments are rows (1-32), balls (1-1000000), and a seed (0-4294967295);
+defaults: `12 10000 42`. Repeating the same arguments repeats the pseudorandom
+experiment. The program also reports total balls and observed/theoretical means.
+
+```sh
+c++ -std=c++17 -O2 galton_board.cpp -o galton_board
+./galton_board 16 50000 123
+```
