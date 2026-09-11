@@ -154,3 +154,25 @@ size from 1 to 25 (default: 5). A 3-by-3 square has magic sum 15.
 c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 ./magic_square 5
 ```
+
+## Newton fractal
+
+`newton_fractal.cpp` marks starting points in the complex plane by which root
+of $z^3=1$ Newton's method approaches:
+
+$$
+z_{n+1} = z_n - \frac{z_n^3-1}{3z_n^2}
+$$
+
+Characters `1`, `2`, and `3` identify the roots $1$, $-1/2+i\sqrt{3}/2$, and
+$-1/2-i\sqrt{3}/2$. A `?` marks an unresolved point: the iteration limit was
+reached, the derivative was too small, or a value was non-finite. Classification
+uses a distance tolerance of $10^{-6}$, so this is a finite-precision picture.
+
+The window is $[-2,2]$ on both axes. Optional arguments are width (5-161),
+height (5-81), and maximum Newton updates per point (1-200); defaults: `81 41 40`.
+
+```sh
+c++ -std=c++17 -O2 newton_fractal.cpp -o newton_fractal
+./newton_fractal 81 41 40
+```
