@@ -231,3 +231,21 @@ defaults: `7 3`. Large steps are reduced modulo the circle size.
 c++ -std=c++17 -O2 josephus.cpp -o josephus
 ./josephus 7 3
 ```
+
+## Fourier square wave
+
+Build a square wave by adding odd sine harmonics:
+
+$$
+S_N(x) = \frac{4}{\pi}\sum_{k=0}^{N-1}\frac{\sin((2k+1)x)}{2k+1}
+$$
+
+`fourier_square_wave.cpp` draws the sum beside the target and reports numerical
+samples and the first peak. More terms narrow the ripples, but Gibbs overshoot
+persists: about 8.949% of the jump between -1 and +1. The plot spans $[-1.5,1.5]$
+vertically to include that overshoot. Choose 1-50 terms (default: 8).
+
+```sh
+c++ -std=c++17 -O2 fourier_square_wave.cpp -o fourier_square_wave
+./fourier_square_wave 20
+```
