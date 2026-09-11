@@ -194,3 +194,23 @@ c++ -std=c++17 -O2 game_of_life.cpp -o game_of_life
 ./game_of_life glider 8
 ./game_of_life blinker 2 9 9
 ```
+
+## Egyptian fractions
+
+`egyptian_fractions.cpp` splits a rational number into distinct unit fractions
+by repeatedly choosing the largest one that fits the remainder. For example:
+
+$$
+\frac{4}{13} = \frac{1}{4} + \frac{1}{18} + \frac{1}{468}
+$$
+
+Optional arguments are numerator (0-1000000) and denominator (1-1000000);
+the default is `4 13`. Integer parts remain separate, and zero gives zero.
+Arithmetic uses exact 64-bit integers. Before an intermediate denominator would
+overflow, or after 32 unit fractions, the program stops with exit code 2 and
+prints the exact remaining fraction rather than an incorrect decomposition.
+
+```sh
+c++ -std=c++17 -O2 egyptian_fractions.cpp -o egyptian_fractions
+./egyptian_fractions 4 13
+```
