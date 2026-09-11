@@ -176,3 +176,21 @@ height (5-81), and maximum Newton updates per point (1-200); defaults: `81 41 40
 c++ -std=c++17 -O2 newton_fractal.cpp -o newton_fractal
 ./newton_fractal 81 41 40
 ```
+
+## Conway's Game of Life
+
+`game_of_life.cpp` evolves a `glider` or `blinker` using Conway's rules:
+birth with three live neighbors, and survival with two or three.
+The blinker repeats every two updates; away from the boundary, the glider
+moves one cell diagonally every four.
+
+`#` marks living cells and `.` marks dead cells. Outside cells stay dead,
+and edges do not wrap. The initial board and every generation are printed.
+Optional arguments are seed, updates (0-50), width (5-80), and height (5-40);
+defaults: `glider 8 20 12`.
+
+```sh
+c++ -std=c++17 -O2 game_of_life.cpp -o game_of_life
+./game_of_life glider 8
+./game_of_life blinker 2 9 9
+```
