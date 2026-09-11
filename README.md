@@ -214,3 +214,20 @@ prints the exact remaining fraction rather than an incorrect decomposition.
 c++ -std=c++17 -O2 egyptian_fractions.cpp -o egyptian_fractions
 ./egyptian_fractions 4 13
 ```
+
+## Josephus circle
+
+`josephus.cpp` removes every $k$-th person from a circle and shows the elimination
+order and final survivor. People are numbered from 1; person 1 receives the
+first count, and counting restarts at the next person after each removal.
+With 7 people and step 3, person 4 remains.
+
+The simulation independently checks its result with the zero-based recurrence
+$J(1)=0$, $J(n)=(J(n-1)+k)\bmod n$, then adds one for the displayed numbering.
+Optional arguments are people (1-100) and step (1 through $2^{64}-1$);
+defaults: `7 3`. Large steps are reduced modulo the circle size.
+
+```sh
+c++ -std=c++17 -O2 josephus.cpp -o josephus
+./josephus 7 3
+```
