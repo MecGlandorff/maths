@@ -136,3 +136,21 @@ Choose 1-1000000 updates (default: 10000).
 c++ -std=c++17 -O2 pi_convergence.cpp -o pi_convergence
 ./pi_convergence 10000
 ```
+
+## Magic squares
+
+`magic_square.cpp` arranges every integer from 1 to $n^2$ exactly once so that
+every row, column, and both main diagonals have the same sum:
+
+$$
+M = \frac{n(n^2+1)}{2}
+$$
+
+It uses the Siamese method: start at the top center, step up and right with
+wraparound, and move down instead if the next cell is occupied. Choose an odd
+size from 1 to 25 (default: 5). A 3-by-3 square has magic sum 15.
+
+```sh
+c++ -std=c++17 -O2 magic_square.cpp -o magic_square
+./magic_square 5
+```
