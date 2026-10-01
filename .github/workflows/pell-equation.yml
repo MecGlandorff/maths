@@ -1,0 +1,33 @@
+name: Pell equation
+
+on:
+  pull_request:
+    paths:
+      - pell_equation.cpp
+      - tests/test_pell_equation.py
+      - .github/workflows/pell-equation.yml
+  push:
+    branches: [master]
+    paths:
+      - pell_equation.cpp
+      - tests/test_pell_equation.py
+      - .github/workflows/pell-equation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Pell equation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the CLI and exact integer solutions
+        run: python3 tests/test_pell_equation.py
