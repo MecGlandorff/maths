@@ -1,0 +1,33 @@
+name: Gambler's ruin
+
+on:
+  pull_request:
+    paths:
+      - gamblers_ruin.cpp
+      - tests/test_gamblers_ruin.py
+      - .github/workflows/gamblers-ruin.yml
+  push:
+    branches: [master]
+    paths:
+      - gamblers_ruin.cpp
+      - tests/test_gamblers_ruin.py
+      - .github/workflows/gamblers-ruin.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Gambler's ruin (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the CLI, probabilities, and bounded simulations
+        run: python3 tests/test_gamblers_ruin.py
