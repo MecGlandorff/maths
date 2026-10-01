@@ -35,6 +35,43 @@ c++ -std=c++17 -O2 mandelbrot.cpp -o mandelbrot
 ./mandelbrot
 ```
 
+## Logistic map and the route to chaos
+
+`logistic_map.cpp` iterates a simple nonlinear recurrence:
+
+$$
+x_{n+1} = r x_n(1-x_n), \qquad 0 \leq r \leq 4
+$$
+
+Its ASCII bifurcation diagram samples rates from 2.5 to 4.0. A single branch
+splits into two, then four, before densely filled regions and periodic windows
+appear. Each `*` marks a vertical bin visited by the sampled orbit. The separate
+report for your chosen rate prints the last eight retained states and estimates
+local sensitivity using the mean of $\ln|r(1-2x_n)|$. A positive estimate suggests
+local expansion along the sampled orbit; a negative one suggests contraction.
+The estimate is `-inf` when a sampled derivative is zero.
+
+Try rates `2.8`, `3.2`, and `3.5` to see approximately one, two, and four repeating
+values, then `3.9` for an irregular orbit. Every run starts at
+$x_0=0.3141592653589793$ and discards 1000 updates. Finite precision, finite sample
+counts, and the coarse grid limit the picture: the discarded updates do not
+guarantee convergence, narrow windows can be missed, and the sensitivity
+estimate does not prove chaos or a period.
+
+Optional arguments are rate (0-4), retained samples per orbit (16-4096), width
+(21-161), and height (11-61); defaults: `3.9 256 81 25`. The rate changes the
+numeric report; the diagram always spans 2.5-4.0.
+
+```sh
+c++ -std=c++17 -O2 logistic_map.cpp -o logistic_map
+./logistic_map
+./logistic_map 3.2 512 101 31
+python3 tests/test_logistic_map.py
+```
+
+The test script uses only Python's standard library, builds in a temporary
+directory, and accepts `CXX`, `CPPFLAGS`, and `CXXFLAGS` overrides.
+
 ## Ulam prime spiral
 
 The third project places the positive integers in a square spiral and marks

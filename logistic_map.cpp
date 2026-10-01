@@ -25,6 +25,12 @@ bool parseInteger(std::string_view text, int minimum, int maximum, int& value) {
 }
 
 bool parseRate(const char* text, double& value) {
+    // Restrict the syntax to decimal/scientific notation: some standard
+    // libraries also accept hexadecimal input when extracting a double.
+    if (std::string_view{text}.find_first_not_of("0123456789+-.eE")
+        != std::string_view::npos) {
+        return false;
+    }
     // A classic locale keeps the decimal separator predictable. noskipws and
     // eof reject leading/trailing whitespace and partially parsed arguments.
     std::istringstream input{text};
