@@ -1,0 +1,33 @@
+name: Logistic map
+
+on:
+  pull_request:
+    paths:
+      - logistic_map.cpp
+      - tests/test_logistic_map.py
+      - .github/workflows/logistic-map.yml
+  push:
+    branches: [master]
+    paths:
+      - logistic_map.cpp
+      - tests/test_logistic_map.py
+      - .github/workflows/logistic-map.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Logistic map (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the CLI and numerical behavior
+        run: python3 tests/test_logistic_map.py
