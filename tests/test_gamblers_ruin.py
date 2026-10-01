@@ -181,6 +181,39 @@ class GamblersRuinTests(unittest.TestCase):
         self.assertIn("Approximate bounds:", output)
         self.assertEqual(self.value(output, "Observed mean min(T, step-limit)"), 1)
 
+    def test_censored_batch_includes_successes_ruins_and_unresolved(self):
+        trials = 31
+        output = self.run_program(2, 4, 50, trials, 42, 3, expected_codes=(2,)).stdout
+        successes, ruins, unresolved = self.counts(output)
+        self.assertTrue(all(count > 0 for count in (successes, ruins, unresolved)))
+        self.assertEqual(successes + ruins + unresolved, trials)
+
+        exact = re.search(r"batch lies in \[(\d+)/(\d+), (\d+)/(\d+)\]", output)
+        self.assertIsNotNone(exact)
+        self.assertEqual(
+            tuple(map(int, exact.groups())),
+            (successes, trials, successes + unresolved, trials),
+        )
+        approximate = re.search(r"Approximate bounds: \[([\d.]+), ([\d.]+)\]", output)
+        self.assertIsNotNone(approximate)
+        for actual, expected in zip(
+            map(float, approximate.groups()),
+            (successes / trials, (successes + unresolved) / trials),
+        ):
+            self.assertAlmostEqual(actual, expected, delta=5.1e-7)
+
+        # From bankroll 2 with target 4, absorption within three updates can
+        # only happen on update 2; every unresolved trial contributes 3.
+        expected_mean = (2 * (successes + ruins) + 3 * unresolved) / trials
+        self.assertAlmostEqual(
+            self.value(output, "Observed mean min(T, step-limit)"),
+            expected_mean, delta=5.1e-7,
+        )
+        self.assertIn("Durations are censored;", output)
+        self.assertIn("not a confidence interval", output)
+        self.assertNotIn("Observed mean steps:", output)
+        self.assertNotIn("Observed success fraction:", output)
+
     def test_seed_reproducibility(self):
         for seed in (0, 42, 4294967295):
             with self.subTest(seed=seed):
