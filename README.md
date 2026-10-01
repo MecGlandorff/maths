@@ -215,6 +215,38 @@ c++ -std=c++17 -O2 egyptian_fractions.cpp -o egyptian_fractions
 ./egyptian_fractions 4 13
 ```
 
+## Pell equations and continued fractions
+
+Approximating a square root with fractions can solve an exact integer equation:
+
+$$
+x^2 - Dy^2 = 1
+$$
+
+`pell_equation.cpp` expands $\sqrt{D}$ as a periodic continued fraction and
+prints each convergent $p/q$, its exact residual $p^2-Dq^2$, and whether it lies
+below or above the square root. The first residual of +1 gives the smallest
+positive solution. A residual of -1 solves the companion equation with -1 on
+the right. If the period has length $L$, the positive solution takes $L$
+convergents when $L$ is even, or $2L$ when it is odd, counting the initial
+integer term.
+
+The default is $D=13$, giving $649^2-13\cdot180^2=1$. Try $D=61$ for a much
+larger surprise: $x=1766319049$ and $y=226153980$. Choose a nonsquare integer
+from 2 to 100. All calculations use exact 64-bit integers, with checks before
+multiplication; perfect squares and invalid arguments return exit code 1.
+
+```sh
+c++ -std=c++17 -O2 pell_equation.cpp -o pell_equation
+./pell_equation
+./pell_equation 61
+```
+
+Run the Python standard-library checks with `python3 tests/test_pell_equation.py`.
+They compile into a temporary directory and compare all 90 accepted values
+against an independent exact rational-interval calculation. `CXX` and
+`CXXFLAGS` can select a compiler and extra flags.
+
 ## Josephus circle
 
 `josephus.cpp` removes every $k$-th person from a circle and shows the elimination
