@@ -1,8 +1,10 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -24,7 +26,8 @@ void usage(std::ostream& out, const char* program) {
     out << "Usage: " << program << " [D]\n"
         << "D: a nonsquare integer from 2 to " << kMaximumD << " (default 13).\n"
         << "Use continued fractions of sqrt(D) to find the smallest positive\n"
-        << "integer solution of x^2 - D*y^2 = 1. Arithmetic is exact.\n";
+        << "integer solution of x^2 - D*y^2 = 1. Arithmetic is exact.\n"
+        << "Shows the repeating coefficients, convergents, and signed Pell residuals.\n";
 }
 
 bool parseD(std::string_view text, Integer& value) {
@@ -104,6 +107,31 @@ bool findSolution(Integer value, Integer root, const std::vector<Integer>& perio
     return false;
 }
 
+void printExploration(Integer value, Integer root, const std::vector<Integer>& period,
+                      const std::vector<Convergent>& convergents) {
+    std::cout << "sqrt(" << value << ") = [" << root << "; (";
+    for (std::size_t index = 0; index < period.size(); ++index) {
+        std::cout << (index == 0 ? "" : ", ") << period[index];
+    }
+    std::cout << ")]\nParentheses repeat. Period length: " << period.size() << ".\n"
+              << "An even period needs L convergents; an odd period needs 2L.\n\n"
+              << "Convergents p/q approach sqrt(D) from below and above:\n"
+              << std::setw(3) << "n" << std::setw(5) << "a_n"
+              << std::setw(14) << "p" << std::setw(14) << "q"
+              << std::setw(17) << "p^2 - D*q^2" << "  side\n";
+    for (std::size_t index = 0; index < convergents.size(); ++index) {
+        const auto& row = convergents[index];
+        const std::string residual = (row.positiveResidual ? "+" : "-")
+                                     + std::to_string(row.residualMagnitude);
+        std::cout << std::setw(3) << index << std::setw(5) << row.coefficient
+                  << std::setw(14) << row.numerator << std::setw(14) << row.denominator
+                  << std::setw(17) << residual
+                  << (row.positiveResidual ? "  above" : "  below") << '\n';
+    }
+    std::cout << "\nThe first +1 residual gives the smallest positive Pell solution.\n"
+              << "A -1 residual solves the companion equation x^2 - D*y^2 = -1.\n";
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -131,9 +159,10 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
+    std::cout << "Pell equation: x^2 - " << value << "*y^2 = 1\n";
+    printExploration(value, root, period, convergents);
     const auto& solution = convergents.back();
-    std::cout << "Pell equation: x^2 - " << value << "*y^2 = 1\n"
-              << "Smallest positive solution: x = " << solution.numerator
+    std::cout << "Smallest positive solution: x = " << solution.numerator
               << ", y = " << solution.denominator << '\n'
               << solution.numerator << "^2 - " << value << "*"
               << solution.denominator << "^2 = 1\n";
