@@ -74,7 +74,7 @@ directory, and accepts `CXX`, `CPPFLAGS`, and `CXXFLAGS` overrides.
 
 ## Ulam prime spiral
 
-The third project places the positive integers in a square spiral and marks
+`ulam_spiral.cpp` places the positive integers in a square spiral and marks
 every prime number with `##`. The primes form surprisingly strong diagonal
 patterns even though they become less common as the numbers grow.
 
