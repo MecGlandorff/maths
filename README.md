@@ -113,6 +113,54 @@ c++ -std=c++17 -O2 birthday_paradox.cpp -o birthday_paradox
 ./birthday_paradox 23
 ```
 
+## Gambler's ruin
+
+`gamblers_ruin.cpp` follows a bankroll that gains one unit with probability $p$
+and loses one with probability $q=1-p$. A trial stops at 0 or a chosen target
+$N$. The program plots the first trial in ASCII, compares a seeded simulation
+with theory, and shows how success probability changes with the starting
+bankroll $i$. Even a fair game only reaches the target with probability $i/N$.
+
+For a fair walk ($p=q=1/2$), success probability and expected stopping time are:
+
+$$
+P_i = \frac{i}{N}, \qquad E_i[T] = i(N-i)
+$$
+
+For $0<p<1$ and $p\ne q$:
+
+$$
+P_i = \frac{1-(q/p)^i}{1-(q/p)^N}, \qquad
+E_i[T] = \frac{i-NP_i}{q-p}
+$$
+
+The program handles $p=0$, $p=1$, and initial boundary states separately. It
+evaluates these exact model formulas in floating-point arithmetic, using a
+rescaled form to avoid large powers. Trials use independent pseudorandom steps;
+the same arguments reproduce the experiment across standard C++ libraries.
+
+Optional arguments are start (0-target), target (2-40), integer win percentage
+(0-100), trials (1-10000), seed (0-4294967295), and step limit per trial
+(1-10000). Defaults: `10 20 50 10000 42 10000`. The path preview shows at most
+60 updates and reports omitted updates. Work is capped at 100 million walk
+updates. Invalid arguments return 1; any unresolved trial makes the program
+return 2. Such trials remain separate from wins and losses: the output gives
+bounds on this batch's eventual success fraction and the mean of the capped
+durations. These bounds describe unresolved outcomes, rather than statistical
+confidence in the theoretical probability.
+
+```sh
+c++ -std=c++17 -O2 gamblers_ruin.cpp -o gamblers_ruin
+./gamblers_ruin 10 20 50
+./gamblers_ruin 10 20 45 10000 123
+./gamblers_ruin 2 4 50 20 42 1  # All trials unresolved; exits 2.
+python3 tests/test_gamblers_ruin.py
+```
+
+The test script needs Python 3 and a C++17 compiler (`CXX`, `CPPFLAGS`, and
+`CXXFLAGS` are supported). It checks the formulas against an exact absorbing
+Markov chain calculation, plus boundary states, seeded runs, and step limits.
+
 ## Pi convergence race
 
 `pi_convergence.cpp` compares two alternating series for $\pi$:

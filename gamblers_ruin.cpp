@@ -212,8 +212,11 @@ void printExperiment(const Experiment& experiment, std::uint32_t trials,
                                                            + experiment.unresolved)
                                   / trials;
         std::cout << "Unresolved trials are neither successes nor ruins.\n"
-                  << "Eventual success fraction for this batch lies in [" << lower
-                  << ", " << upper << "]; this is not a confidence interval.\n"
+                  << "Eventual success fraction for this batch lies in ["
+                  << experiment.successes << '/' << trials << ", "
+                  << experiment.successes + experiment.unresolved << '/' << trials
+                  << "].\nApproximate bounds: [" << lower << ", " << upper
+                  << "]; these describe unresolved outcomes, not a confidence interval.\n"
                   << "Observed mean min(T, step-limit): " << meanObserved << '\n'
                   << "Durations are censored; this is not an estimate of the full mean T.\n";
     }
