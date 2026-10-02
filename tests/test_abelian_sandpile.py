@@ -155,6 +155,7 @@ class AbelianSandpileTests(unittest.TestCase):
         report = self.report(self.run_cli(3, 4, "--odometer"), 3)
         self.assertEqual(report["heights"], [[0, 1, 0], [1, 0, 1], [0, 1, 0]])
         self.assertEqual(report["odometer"], [[0, 0, 0], [0, 1, 0], [0, 0, 0]])
+        self.assertEqual(report["activity"], ["   ", " @ ", "   "])
         self.assertEqual(report["lost"], 0)
         self.verify_balance_and_symmetry(report, 3, 4)
 
@@ -162,6 +163,7 @@ class AbelianSandpileTests(unittest.TestCase):
         report = self.report(self.run_cli(3, 16, "--odometer"), 3)
         self.assertEqual(report["heights"], [[2, 1, 2], [1, 0, 1], [2, 1, 2]])
         self.assertEqual(report["odometer"], [[0, 1, 0], [1, 5, 1], [0, 1, 0]])
+        self.assertEqual(report["activity"], [" = ", "=@=", " = "])
         self.assertEqual((report["retained"], report["lost"], report["topplings"]), (12, 4, 9))
         self.verify_balance_and_symmetry(report, 3, 16)
 

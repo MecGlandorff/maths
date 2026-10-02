@@ -87,9 +87,10 @@ Sandpile stabilize(int size, Count grains) {
 
     constexpr std::array<int, 4> rowOffsets = {-1, 1, 0, 0};
     constexpr std::array<int, 4> columnOffsets = {0, 0, -1, 1};
-    // Weight (r+1)*(size-r) + (c+1)*(size-c) drops by at least 4 per
-    // toppling, including boundary loss. Thus there are at most
-    // grains*(size+1)^2/8 individual topplings: <= 48,050,000 here.
+    // With weight w(r,c) = (r+1)*(size-r) + (c+1)*(size-c), the potential
+    // sum(height(r,c) * w(r,c)) drops by at least 4 per toppling, including
+    // boundary loss. Thus there are at most grains*(size+1)^2/8 individual
+    // topplings: <= 48,050,000 here.
     // Every height is <= grains; all exact counts fit comfortably in Count.
     while (!pending.empty()) {
         const int cell = pending.front();
