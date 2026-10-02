@@ -1,0 +1,33 @@
+name: Abelian sandpile
+
+on:
+  pull_request:
+    paths:
+      - abelian_sandpile.cpp
+      - tests/test_abelian_sandpile.py
+      - .github/workflows/abelian-sandpile.yml
+  push:
+    branches: [master]
+    paths:
+      - abelian_sandpile.cpp
+      - tests/test_abelian_sandpile.py
+      - .github/workflows/abelian-sandpile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Abelian sandpile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check stabilization, conservation, and toppling order
+        run: python3 tests/test_abelian_sandpile.py
