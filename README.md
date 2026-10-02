@@ -280,6 +280,44 @@ c++ -std=c++17 -O2 game_of_life.cpp -o game_of_life
 ./game_of_life blinker 2 9 9
 ```
 
+## Abelian sandpile
+
+`abelian_sandpile.cpp` places a pile of grains at the center of a finite square
+grid. A cell with at least four grains topples: it loses four and sends one
+grain to each orthogonal neighbor. Grains crossing an edge leave the grid.
+Redistribution continues until every cell has height 0, 1, 2, or 3.
+
+The resulting geometric pattern has a surprising property: every legal
+toppling order gives the same final heights and the same number of topplings
+at each cell. Those per-cell counts form the **odometer**. The program shows
+the exact final heights beside a grain balance, followed by an activity map
+with logarithmic shading relative to that run's maximum. A space means the
+cell never toppled; `.:-=+*#%@` shows increasing activity.
+
+Optional arguments are an odd grid size (3-61) and starting grains (0-100000);
+defaults: `31 10000`. Add `--odometer` to print exact counts for every cell as
+`row column topplings`, using zero-based coordinates. These narrow records are
+also convenient for checking the result independently.
+
+For a small example, `3 16` retains 12 grains, loses 4 through the boundary,
+and performs 9 topplings. Counts use exact 64-bit integers. A decreasing
+potential bounds accepted inputs by 48,050,000 individual topplings; the
+implementation combines consecutive topplings at a cell into a batch.
+
+```sh
+c++ -std=c++17 -O2 abelian_sandpile.cpp -o abelian_sandpile
+./abelian_sandpile
+./abelian_sandpile 3 16 --odometer
+python3 tests/test_abelian_sandpile.py
+```
+
+The Python standard-library tests compare both heights and odometers with a
+different legal toppling order, check the exact grain balance at every cell,
+and exercise boundaries, symmetry, invalid arguments, and maximum input.
+They build in a temporary directory and support `CXX`, `CPPFLAGS`, and
+`CXXFLAGS`. For more about the model, see Dhar's
+[The Abelian Sandpile and Related Models](https://arxiv.org/abs/cond-mat/9808047).
+
 ## Egyptian fractions
 
 `egyptian_fractions.cpp` splits a rational number into distinct unit fractions
