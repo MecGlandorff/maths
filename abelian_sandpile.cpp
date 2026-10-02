@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <iostream>
@@ -130,6 +132,35 @@ void printHeights(const Sandpile& pile, int size) {
     std::cout << border << '\n';
 }
 
+void printActivity(const Sandpile& pile, int size) {
+    constexpr std::string_view shades = " .:-=+*#%@";
+    const Count maximum = *std::max_element(pile.odometer.begin(), pile.odometer.end());
+    const double scale = maximum == 0 ? 1.0 : std::log1p(static_cast<double>(maximum));
+    const std::string border = '+' + std::string(size, '-') + '+';
+    std::cout << "\nActivity map (topplings per cell):\n"
+              << "Space = never toppled; .:-=+*#%@ = increasing activity.\n"
+              << "Logarithmic shading relative to this run's maximum.\n"
+              << "Maximum topplings at one cell: " << maximum << '\n'
+              << border << '\n';
+    for (int row = 0; row < size; ++row) {
+        std::cout << '|';
+        for (int column = 0; column < size; ++column) {
+            const Count count = pile.odometer[row * size + column];
+            if (count == 0) {
+                std::cout << ' ';
+            } else {
+                // Only shading uses floating point. Heights and the odometer
+                // remain exact integers; --odometer exposes every cell count.
+                const double fraction = std::log1p(static_cast<double>(count)) / scale;
+                const int shade = std::clamp(1 + static_cast<int>(8 * fraction), 1, 9);
+                std::cout << shades[shade];
+            }
+        }
+        std::cout << "|\n";
+    }
+    std::cout << border << '\n';
+}
+
 void printOdometer(const Sandpile& pile, int size) {
     // Coordinate records keep even the largest grid's exact output narrow.
     std::cout << "\nExact odometer (all cells; row and column are zero-based):\n"
@@ -162,11 +193,13 @@ int main(int argc, char* argv[]) {
               << "; grains initially at the center.\n"
               << "A cell with at least 4 grains sends one to each orthogonal neighbor.\n"
               << "Open absorbing edges: grains leaving the grid are lost.\n"
+              << "Legal toppling orders give the same final heights and per-cell counts.\n"
               << "Initial grains: " << options.grains << '\n'
               << "Retained grains: " << retained << '\n'
               << "Lost grains: " << pile.lost << '\n'
               << "Total topplings: " << pile.topplings << '\n';
     printHeights(pile, options.size);
+    printActivity(pile, options.size);
     if (options.showOdometer) {
         printOdometer(pile, options.size);
     }
