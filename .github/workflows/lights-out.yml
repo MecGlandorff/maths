@@ -1,0 +1,33 @@
+name: Lights Out
+
+on:
+  pull_request:
+    paths:
+      - lights_out.cpp
+      - tests/test_lights_out.py
+      - .github/workflows/lights-out.yml
+  push:
+    branches: [master]
+    paths:
+      - lights_out.cpp
+      - tests/test_lights_out.py
+      - .github/workflows/lights-out.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lights Out (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check exact solutions, minimum presses, and kernel bases
+        run: python3 tests/test_lights_out.py
