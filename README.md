@@ -268,13 +268,16 @@ presses, and number of minimum patterns. Ties use row-major lexicographic
 order: read left to right, top to bottom, preferring `0` to `1`. Counts refer
 to patterns with each cell pressed at most once, not different move orders.
 
-Choose a size from 1 to 10 (default: 5). An optional board consists of exactly
-that many slash-separated rows of `0` and `1`, with `1` meaning on. Without
-a board, every light starts on. The default 5-by-5 board has rank 23, nullity
-2, and four solutions, all requiring 15 presses. Add `--basis` to display the
-independent press patterns that leave any board unchanged; this also works
-for an impossible board. Invalid arguments return 1, impossible boards return
-2, and solved boards return 0.
+Invoke it as `./lights_out [size [board]] [--basis]`. Choose a size from 1 to 10
+(default: 5). An optional board must contain exactly that many slash-separated
+binary rows, each of that width, with `1` meaning on. Without a board, every
+light starts on. The default 5-by-5 board has rank 23, nullity 2, and four
+solutions, all requiring 15 presses.
+
+`--basis` may appear once, before, between, or after the positional arguments;
+it displays independent press patterns that leave any board unchanged, even
+for an impossible board. Use `--help` alone for usage. Invalid arguments return
+1, impossible boards return 2, and solved boards or help return 0.
 
 The search is small even at the supported limit: the first press row determines
 each later row by clearing the lights immediately above. Thus at most $2^n$
