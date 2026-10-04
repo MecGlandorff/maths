@@ -240,6 +240,63 @@ c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 ./magic_square 5
 ```
 
+## Lights Out and binary linear algebra
+
+`lights_out.cpp` solves a square Lights Out puzzle. Pressing a cell toggles its
+light and each orthogonal neighbor. Edges do not wrap. The goal is to switch
+every light off using the fewest presses.
+
+Pressing twice cancels, and press order does not matter. Write the board as a
+binary vector $b$ and the press pattern as $x$. If $A$ records which lights
+each press toggles, the puzzle becomes:
+
+$$
+Ax = b \pmod{2}
+$$
+
+Gauss-Jordan elimination uses XOR for row operations. A contradictory row
+$0=1$ means the board is impossible. Otherwise, a particular solution $x_0$
+and a basis $v_1,\ldots,v_k$ of the kernel give every solution:
+
+$$
+x = x_0 + c_1v_1 + \cdots + c_kv_k, \qquad c_i \in \{0,1\}
+$$
+
+The program checks all $2^k$ patterns to find the exact minimum number of
+presses. It reports the matrix rank, nullity $k$, solution count, minimum
+presses, and number of minimum patterns. Ties use row-major lexicographic
+order: read left to right, top to bottom, preferring `0` to `1`. Counts refer
+to patterns with each cell pressed at most once, not different move orders.
+
+Choose a size from 1 to 10 (default: 5). An optional board consists of exactly
+that many slash-separated rows of `0` and `1`, with `1` meaning on. Without
+a board, every light starts on. The default 5-by-5 board has rank 23, nullity
+2, and four solutions, all requiring 15 presses. Add `--basis` to display the
+independent press patterns that leave any board unchanged; this also works
+for an impossible board. Invalid arguments return 1, impossible boards return
+2, and solved boards return 0.
+
+The search is small even at the supported limit: the first press row determines
+each later row by clearing the lights immediately above. Thus at most $2^n$
+solutions exist for an $n$-by-$n$ board, so at most 1024 patterns need checking.
+All calculations are exact binary arithmetic.
+
+```sh
+c++ -std=c++17 -O2 lights_out.cpp -o lights_out
+./lights_out
+./lights_out 3 010/111/010   # One press at the center solves this cross.
+./lights_out 4 --basis
+./lights_out 5 10000/00000/00000/00000/00000  # Impossible; exits 2.
+python3 tests/test_lights_out.py
+```
+
+The Python standard-library tests use an independent row-chasing solver,
+exhaust every board up to 3-by-3, and check minimum patterns, kernel bases,
+impossible boards, input validation, and all supported sizes. They compile
+in a temporary directory and support `CXX`, `CPPFLAGS`, and `CXXFLAGS`.
+For the underlying mathematics, see Anderson and Feil's
+[Turning Lights Out with Linear Algebra](https://doi.org/10.1080/0025570X.1998.11996658).
+
 ## Newton fractal
 
 `newton_fractal.cpp` marks starting points in the complex plane by which root
