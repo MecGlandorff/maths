@@ -2,6 +2,7 @@
 #include <charconv>
 #include <cstdint>
 #include <iostream>
+#include <numeric>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -22,14 +23,16 @@ struct Options {
     std::string_view family = "grid";
     int size = 3;
     Graph graph;
+    bool showEdgeStats = false;
 };
 
 void usage(std::ostream& out, const char* program) {
-    out << "Usage: " << program << " [family [size [edges]]]\n"
+    out << "Usage: " << program << " [family [size [edges]]] [--edge-stats]\n"
         << "  family: path, cycle, complete, grid, custom (default grid)\n"
         << "  size: vertices 1..10; cycle needs 3..10; grid side 1..3 (default 3)\n"
         << "  custom requires size and edges, e.g. custom 4 0-1,1-2,2-3\n"
         << "  Use - for no edges. Loops and duplicate edges are invalid.\n"
+        << "  --edge-stats: exact edge inclusion counts, probabilities, and bridges\n"
         << "  --help: show this help\n";
 }
 
@@ -70,8 +73,18 @@ bool parseEdges(std::string_view text, Graph& graph) {
 }
 
 bool parseOptions(int argc, char* argv[], Options& options) {
-    if (argc > 4) return false;
-    if (argc >= 2) options.family = argv[1];
+    std::vector<std::string_view> positional;
+    for (int argument = 1; argument < argc; ++argument) {
+        const std::string_view text{argv[argument]};
+        if (text == "--edge-stats") {
+            if (options.showEdgeStats) return false;
+            options.showEdgeStats = true;
+        } else {
+            positional.push_back(text);
+        }
+    }
+    if (positional.size() > 3) return false;
+    if (!positional.empty()) options.family = positional[0];
     if (options.family != "path" && options.family != "cycle"
         && options.family != "complete" && options.family != "grid"
         && options.family != "custom") {
@@ -79,15 +92,15 @@ bool parseOptions(int argc, char* argv[], Options& options) {
     }
     const int minimum = options.family == "cycle" ? 3 : 1;
     const int maximum = options.family == "grid" ? 3 : 10;
-    if (argc >= 3 && !parseInteger(argv[2], minimum, maximum, options.size)) {
+    if (positional.size() >= 2 && !parseInteger(positional[1], minimum, maximum, options.size)) {
         return false;
     }
     auto& graph = options.graph;
     graph.vertices = options.family == "grid" ? options.size * options.size : options.size;
     if (options.family == "custom") {
-        if (argc != 4 || !parseEdges(argv[3], graph)) return false;
+        if (positional.size() != 3 || !parseEdges(positional[2], graph)) return false;
     } else {
-        if (argc > 3) return false;
+        if (positional.size() > 2) return false;
         if (options.family == "path" || options.family == "cycle") {
             for (int vertex = 1; vertex < graph.vertices; ++vertex) {
                 graph.edges.emplace_back(vertex - 1, vertex);
@@ -175,6 +188,25 @@ void printMatrix(const Matrix& matrix) {
     }
 }
 
+void printEdgeStatistics(const Graph& graph, const Matrix& matrix, Count trees) {
+    Count sum = 0;
+    std::cout << "Edge inclusion (uniform spanning tree):\n"
+              << "u v trees probability bridge\n";
+    for (const auto& edge : graph.edges) {
+        const auto [left, right] = edge;
+        // Contract this unit edge and delete the merged vertex. The resulting
+        // cofactor is the original Laplacian with both endpoints removed.
+        // Original degrees retain the multiplicities of contracted edges.
+        const Count containing = determinant(principalMinor(matrix, left, right));
+        const Count divisor = std::gcd(containing, trees);
+        std::cout << left << ' ' << right << ' ' << containing << ' '
+                  << containing / divisor << '/' << trees / divisor << ' '
+                  << (containing == trees ? "yes" : "no") << '\n';
+        sum += containing;
+    }
+    std::cout << "Inclusion sum: " << sum << '\n';
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -201,5 +233,6 @@ int main(int argc, char* argv[]) {
         std::cout << "No spanning tree: graph is disconnected.\n";
         return 2;
     }
+    if (options.showEdgeStats) printEdgeStatistics(options.graph, matrix, trees);
     return 0;
 }
