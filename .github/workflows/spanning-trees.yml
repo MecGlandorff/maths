@@ -1,0 +1,33 @@
+name: Spanning trees
+
+on:
+  pull_request:
+    paths:
+      - spanning_trees.cpp
+      - tests/test_spanning_trees.py
+      - .github/workflows/spanning-trees.yml
+  push:
+    branches: [master]
+    paths:
+      - spanning_trees.cpp
+      - tests/test_spanning_trees.py
+      - .github/workflows/spanning-trees.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Spanning trees (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check exact tree counts, edge probabilities, and bridges
+        run: python3 tests/test_spanning_trees.py
