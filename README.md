@@ -240,6 +240,77 @@ c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 ./magic_square 5
 ```
 
+## Spanning trees and Kirchhoff's theorem
+
+A spanning tree connects every vertex of a graph without forming a cycle.
+`spanning_trees.cpp` counts these trees exactly and can report how often each
+edge appears in them. The default 3-by-3 grid has 192 spanning trees.
+
+The graph's Laplacian $L=D-A$ has vertex degrees on the diagonal, $-1$ for
+adjacent vertices, and zero elsewhere. Kirchhoff's matrix-tree theorem gives:
+
+$$
+\tau(G) = \det L_{\widehat r}
+$$
+
+Here $L_{\widehat r}$ removes row and column $r$. The program displays the
+matrix obtained by removing the last vertex. It evaluates the determinant
+with fraction-free Bareiss elimination and exact 64-bit integer arithmetic.
+The graph-size limits keep all intermediate calculations within that range.
+
+With `--edge-stats`, each edge $e=\{u,v\}$ gets an inclusion count and the
+exact probability that it belongs to a uniformly chosen spanning tree:
+
+$$
+N_e = \det L_{\widehat{u,v}}, \qquad P(e\in T)=\frac{N_e}{\tau(G)}
+$$
+
+The second matrix removes both endpoint rows and columns while retaining the
+original degrees. This counts trees containing $e$: contract the edge, then
+delete the merged vertex from its Laplacian. Fractions are reduced. An edge
+with probability 1 is a **bridge**; removing it disconnects the graph. The
+inclusion counts sum to $(n-1)\tau(G)$, since every tree has $n-1$ edges.
+
+Invoke it as `./spanning_trees [family [size [edges]]] [--edge-stats]`:
+
+| Family | Size | Graph |
+| --- | --- | --- |
+| `path` | 1-10 vertices | A chain |
+| `cycle` | 3-10 vertices | One closed loop |
+| `complete` | 1-10 vertices | Every pair connected |
+| `grid` | Side length 1-3 | A square grid, without wrapping |
+| `custom` | 1-10 vertices | Explicit edges required |
+
+Defaults are `grid 3`; each built-in family uses size 3 when omitted. Vertex
+labels start at 0; grid labels run left to right, top to bottom. `custom`
+requires both size and a comma-separated edge list such as `0-1,1-2,2-3`.
+Use `-` for no edges. The graph is simple and undirected: self-loops, duplicate
+edges (including reversed duplicates), out-of-range vertices, and whitespace
+inside an argument are rejected. Edge order and orientation do not affect
+the result.
+
+`--edge-stats` may appear once anywhere among the arguments. Use `--help`
+alone for usage. Exit codes are 0 for connected graphs or help, 1 for invalid
+arguments, and 2 for disconnected graphs. Disconnected graphs have zero
+spanning trees and no edge probabilities. A single vertex has one empty tree;
+the determinant of its empty cofactor is 1.
+
+```sh
+c++ -std=c++17 -O2 spanning_trees.cpp -o spanning_trees
+./spanning_trees --edge-stats
+./spanning_trees complete 10 --edge-stats  # 100,000,000 trees; each edge has probability 1/5.
+./spanning_trees custom 4 0-1,0-2,1-2,2-3 --edge-stats  # Edge 2-3 is a bridge.
+./spanning_trees custom 4 0-1,2-3  # Disconnected; exits 2.
+python3 tests/test_spanning_trees.py
+```
+
+The Python standard-library tests compare the executable with independent
+tree enumeration, check the printed matrix and exact edge fractions, and
+cover graph families, arbitrary vertex labels, disconnected graphs, input
+validation, and the supported limits. They compile in a temporary directory and accept `CXX`,
+`CPPFLAGS`, and `CXXFLAGS`. See also the
+[MIT notes on the matrix-tree theorem](https://math.mit.edu/~apost/courses/18.212_2021/lectures/18212_lecture19.pdf).
+
 ## Lights Out and binary linear algebra
 
 `lights_out.cpp` solves a square Lights Out puzzle. Pressing a cell toggles its
