@@ -244,7 +244,7 @@ c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 
 How can we represent a dataset with fewer coordinates while losing as little
 information as possible? `pca.cpp` explores principal component analysis (PCA),
-using a C++17 implementation of a symmetric Jacobi eigensolver. It prints the
+using a dependency-free C++17 symmetric Jacobi eigensolver. It prints the
 means, covariance matrix, principal directions, explained variance, compressed
 coordinates, and reconstructed data.
 
@@ -311,22 +311,29 @@ component reconstructs them up to floating-point roundoff.
 The limits are 2–256 samples and 1–8 features. Choose 0–$d$ components with
 `--components K`; the default is `min(2,d)`. Values must be finite decimal or
 scientific notation, either zero or with magnitude from `1e-100` to `1e100`.
-Malformed input, duplicate options, and extra values are rejected. Valid input
-returns 0, invalid input returns 1, and a numerical failure returns 2.
+Options may appear in any order, once each; use `--help` alone for usage.
+Malformed input, unreadable files, duplicate options, and extra values are
+rejected with no standard output. Valid input returns 0, invalid input returns
+1, and a numerical failure returns 2.
 
 `--json` includes all scores and reconstructions; the terminal report previews
 the first eight observations. Each row of `axes` is one principal direction,
 and the corresponding entries in `eigenvalues`, `singular_values`, and
-`explained_variance_ratio` refer to that direction. The ratio is
+`explained_variance_ratio` refer to that direction. All $d$ directions are
+included, even numerical null directions, regardless of $k$. The ratio is
 $\lambda_j/\sum_i\lambda_i$; `retained_variance_ratio` sums the first $k$ ratios.
-For identical observations, the covariance, scores, and errors are zero and
-both variance-ratio fields are `null` because there is no variance to divide by.
+`reconstruction_sse` is the measured squared error; `discarded_variance_sse`
+is the estimate from discarded eigenvalues in the identity above.
+For identical observations, the covariance, eigenvalues, scores, and errors
+are zero and both variance-ratio fields are `null` because there is no variance
+to divide by.
 
 The calculation centers features without standardizing their scales: changing
 units can change the principal directions. High variance does not necessarily
 mean a feature is useful for prediction. Equal eigenvalues can have different,
-equally valid orthonormal bases; the largest loading in each printed direction
-is made positive to choose a consistent sign.
+equally valid orthonormal bases. The largest-magnitude loading in each printed
+direction is made positive; tiny rounding changes at ties can change that sign
+without changing the mathematics.
 
 This is a small numerical teaching example. Centering uses offsets from the
 first observation, and the covariance is rescaled before Jacobi rotations so
