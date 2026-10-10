@@ -23,6 +23,7 @@ constexpr double tolerance = 64 * std::numeric_limits<double>::epsilon();
 struct Options {
     bool json = false;
     std::string input;
+    int components = -1;
 };
 
 struct Analysis {
@@ -32,14 +33,23 @@ struct Analysis {
     Vector eigenvalues;
     Vector singularValues;
     Matrix axes;  // Each row is a principal direction, in descending variance order.
+    int components = 0;
+    double totalVariance = 0;
+    Vector varianceRatio;
+    double retainedRatio = 0;
+    Matrix scores;
+    Matrix reconstruction;
+    double reconstructionSse = 0;
+    double discardedVarianceSse = 0;
 };
 
 void usage(std::ostream& out) {
-    out << "Usage: pca [--input FILE|-] [--json]\n"
+    out << "Usage: pca [--components K] [--input FILE|-] [--json]\n"
            "       pca --help\n"
            "Default: an eight-sample, three-feature demo.\n"
            "Input: n d followed by n*d whitespace-separated numbers.\n"
            "Limits: 2..256 samples, 1..8 features; nonzero magnitudes 1e-100..1e100.\n"
+           "K: 0..d (default min(2,d)); K=0 reconstructs only the mean.\n"
            "Data is centered, without standardizing feature scales.\n";
 }
 
@@ -90,6 +100,7 @@ double number(const std::string& token) {
 Options options(int argc, char** argv) {
     Options result;
     bool inputSeen = false;
+    bool componentsSeen = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json" && !result.json) {
@@ -98,6 +109,9 @@ Options options(int argc, char** argv) {
             inputSeen = true;
             result.input = argv[++i];
             if (result.input.empty()) throw std::invalid_argument("Empty input filename.");
+        } else if (arg == "--components" && !componentsSeen && i + 1 < argc) {
+            componentsSeen = true;
+            result.components = integer(argv[++i]);
         } else {
             throw std::invalid_argument("Unknown, repeated, or incomplete option.");
         }
@@ -202,9 +216,12 @@ void eigenvectors(Matrix matrix, Vector& values, Matrix& axes) {
     }
 }
 
-Analysis analyze(const Matrix& data) {
+Analysis analyze(const Matrix& data, int components) {
     const std::size_t n = data.size(), d = data[0].size();
     Analysis result;
+    result.components = components < 0 ? std::min(2, static_cast<int>(d)) : components;
+    if (result.components > static_cast<int>(d))
+        throw std::invalid_argument("K must not exceed the number of features.");
     result.mean.assign(d, 0);
     result.centered.assign(n, Vector(d));
     // Average offsets from an anchor: identical samples center to exactly zero.
@@ -225,6 +242,32 @@ Analysis analyze(const Matrix& data) {
     eigenvectors(result.covariance, result.eigenvalues, result.axes);
     for (double value : result.eigenvalues)
         result.singularValues.push_back(std::sqrt((n - 1) * value));
+    result.totalVariance = std::accumulate(result.eigenvalues.begin(), result.eigenvalues.end(), 0.0);
+    double retained = 0, discarded = 0;
+    for (std::size_t j = 0; j < d; ++j) {
+        result.varianceRatio.push_back(result.totalVariance == 0 ? 0
+                                     : result.eigenvalues[j] / result.totalVariance);
+        if (j < static_cast<std::size_t>(result.components)) retained += result.eigenvalues[j];
+        else discarded += result.eigenvalues[j];
+    }
+    if (result.totalVariance != 0) result.retainedRatio = retained / result.totalVariance;
+    result.discardedVarianceSse = (n - 1) * discarded;
+    result.scores.assign(n, Vector(result.components, 0));
+    result.reconstruction.assign(n, Vector(d));
+    for (std::size_t i = 0; i < n; ++i) {
+        for (int j = 0; j < result.components; ++j)
+            result.scores[i][j] = std::inner_product(result.centered[i].begin(),
+                result.centered[i].end(), result.axes[j].begin(), 0.0);
+        for (std::size_t feature = 0; feature < d; ++feature) {
+            double projected = 0;
+            for (int j = 0; j < result.components; ++j)
+                projected += result.scores[i][j] * result.axes[j][feature];
+            result.reconstruction[i][feature] = result.mean[feature] + projected;
+            // Measure in centered coordinates to avoid subtracting large offsets again.
+            const double residual = result.centered[i][feature] - projected;
+            result.reconstructionSse += residual * residual;
+        }
+    }
     return result;
 }
 
@@ -250,7 +293,8 @@ void report(const Analysis& a, bool json) {
     if (json) {
         std::cout << std::setprecision(std::numeric_limits<double>::max_digits10)
                   << "{\"samples\":" << a.centered.size()
-                  << ",\"features\":" << a.mean.size() << ",\"mean\":";
+                  << ",\"features\":" << a.mean.size()
+                  << ",\"components\":" << a.components << ",\"mean\":";
         array(std::cout, a.mean);
         std::cout << ",\"covariance\":";
         array(std::cout, a.covariance);
@@ -260,6 +304,18 @@ void report(const Analysis& a, bool json) {
         array(std::cout, a.singularValues);
         std::cout << ",\"axes\":";
         array(std::cout, a.axes);
+        std::cout << ",\"explained_variance_ratio\":";
+        if (a.totalVariance == 0) std::cout << "null";
+        else array(std::cout, a.varianceRatio);
+        std::cout << ",\"retained_variance_ratio\":";
+        if (a.totalVariance == 0) std::cout << "null";
+        else std::cout << a.retainedRatio;
+        std::cout << ",\"scores\":";
+        array(std::cout, a.scores);
+        std::cout << ",\"reconstruction\":";
+        array(std::cout, a.reconstruction);
+        std::cout << ",\"reconstruction_sse\":" << a.reconstructionSse
+                  << ",\"discarded_variance_sse\":" << a.discardedVarianceSse;
         std::cout << "}\n";
         return;
     }
@@ -275,10 +331,27 @@ void report(const Analysis& a, bool json) {
     std::cout << "Principal directions (largest variance first):\n";
     for (std::size_t j = 0; j < a.mean.size(); ++j) {
         std::cout << "PC" << j + 1 << ": variance=" << a.eigenvalues[j]
-                  << " singular value=" << a.singularValues[j] << " axis=";
+                  << " singular value=" << a.singularValues[j] << " explained=";
+        if (a.totalVariance == 0) std::cout << "undefined";
+        else std::cout << 100 * a.varianceRatio[j] << '%';
+        std::cout << " axis=";
         array(std::cout, a.axes[j]);
         std::cout << '\n';
     }
+    std::cout << "Keep " << a.components << " components: ";
+    if (a.totalVariance == 0) std::cout << "explained variance undefined (all samples identical)\n";
+    else std::cout << 100 * a.retainedRatio << "% of variance retained\n";
+    std::cout << "Squared reconstruction error: " << a.reconstructionSse
+              << "\n(n-1) * discarded eigenvalues: " << a.discardedVarianceSse
+              << "\nScores -> reconstructed features (first 8 samples):\n";
+    const std::size_t shown = std::min<std::size_t>(8, a.scores.size());
+    for (std::size_t i = 0; i < shown; ++i) {
+        array(std::cout, a.scores[i]);
+        std::cout << " -> ";
+        array(std::cout, a.reconstruction[i]);
+        std::cout << '\n';
+    }
+    if (shown < a.scores.size()) std::cout << a.scores.size() - shown << " more samples; use --json for all rows.\n";
 }
 }  // namespace
 
@@ -299,7 +372,7 @@ int main(int argc, char** argv) {
             if (!input) throw std::invalid_argument("Could not open input file.");
             data = readData(input);
         }
-        report(analyze(data), config.json);
+        report(analyze(data, config.components), config.json);
     } catch (const std::invalid_argument& error) {
         std::cerr << "Invalid input: " << error.what() << '\n';
         usage(std::cerr);
