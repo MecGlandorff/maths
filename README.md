@@ -240,6 +240,115 @@ c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 ./magic_square 5
 ```
 
+## PCA: linear algebra behind data compression
+
+How can we represent a dataset with fewer coordinates while losing as little
+information as possible? `pca.cpp` explores principal component analysis (PCA),
+using a dependency-free C++17 symmetric Jacobi eigensolver. It prints the
+means, covariance matrix, principal directions, explained variance, compressed
+coordinates, and reconstructed data.
+
+For an $n\times d$ matrix $X$ with one observation per row, subtract each
+feature's mean to obtain $X_c$. The sample covariance is:
+
+$$
+C = \frac{X_c^T X_c}{n-1}, \qquad C v_j = \lambda_j v_j
+$$
+
+The orthonormal eigenvectors are ordered by decreasing eigenvalue. Keeping
+the first $k$ as columns of $V_k$ gives an encoder and decoder:
+
+$$
+Z = X_c V_k, \qquad \hat{X} = ZV_k^T + \mathbf{1}\mu^T
+$$
+
+Here $Z$ has only $k$ coordinates per observation. These matrix multiplications
+are a simple linear version of an autoencoder's compression and reconstruction
+steps; PCA computes the weights directly. Among subspaces of dimension $k$,
+the principal subspace minimizes squared reconstruction error:
+
+$$
+\|X-\hat{X}\|_F^2 = (n-1)\sum_{j>k}\lambda_j
+$$
+
+The program computes both sides independently. It also reports the singular
+values of the centered data, using $\sigma_j=\sqrt{(n-1)\lambda_j}$. This is the
+connection between PCA, eigendecomposition, and singular value decomposition
+(SVD). See [Cornell's PCA notes](https://www.cs.cornell.edu/courses/cs3780/2026sp/lectures/UnsupervisedLearning.html#principal-component-analysis)
+for the variance and approximation viewpoints.
+
+The built-in demo has eight observations and three features. Its covariance
+eigenvalues are $256/7$, $16/7$, and $0.5/7$. Keeping two components preserves
+$544/545\approx99.8165\%$ of the variance, with squared reconstruction error
+$0.5$. Try all component counts to see the tradeoff:
+
+```sh
+c++ -std=c++17 -O2 pca.cpp -o pca
+./pca
+./pca --components 1
+./pca --components 0  # Reconstruct only the mean.
+./pca --components 3  # Keep every direction.
+./pca --components 2 --json
+python3 tests/test_pca.py
+```
+
+Supply your own whitespace-separated data with `--input FILE`, or `--input -`
+for standard input. The first two integers are the sample and feature counts,
+followed by exactly that many rows of values (line breaks are optional):
+
+```text
+4 2
+1 2
+2 4
+3 6
+4 8
+```
+
+For example, save this as `data.txt` and run
+`./pca --input data.txt --components 1`. These points lie on a line, so one
+component reconstructs them up to floating-point roundoff.
+
+The limits are 2–256 samples and 1–8 features. Choose 0–$d$ components with
+`--components K`; the default is `min(2,d)`. Values must be finite decimal or
+scientific notation, either zero or with magnitude from `1e-100` to `1e100`.
+Options may appear in any order, once each; use `--help` alone for usage.
+Malformed input, unreadable files, duplicate options, and extra values are
+rejected with no standard output. Valid input returns 0, invalid input returns
+1, and a numerical failure returns 2.
+
+`--json` includes all scores and reconstructions; the terminal report previews
+the first eight observations. Each row of `axes` is one principal direction,
+and the corresponding entries in `eigenvalues`, `singular_values`, and
+`explained_variance_ratio` refer to that direction. All $d$ directions are
+included, even numerical null directions, regardless of $k$. The ratio is
+$\lambda_j/\sum_i\lambda_i$; `retained_variance_ratio` sums the first $k$ ratios.
+`reconstruction_sse` is the measured squared error; `discarded_variance_sse`
+is the estimate from discarded eigenvalues in the identity above.
+For identical observations, the covariance, eigenvalues, scores, and errors
+are zero and both variance-ratio fields are `null` because there is no variance
+to divide by.
+
+The calculation centers features without standardizing their scales: changing
+units can change the principal directions. High variance does not necessarily
+mean a feature is useful for prediction. Equal eigenvalues can have different,
+equally valid orthonormal bases. The largest-magnitude loading in each printed
+direction is made positive; tiny rounding changes at ties can change that sign
+without changing the mathematics.
+
+This is a small numerical teaching example. Centering uses offsets from the
+first observation, and the covariance is rescaled before Jacobi rotations so
+the convergence threshold is relative to the data. The numeric limits keep
+intermediate products finite. The squared error is measured in centered
+coordinates to avoid subtracting large offsets again. Tiny negative eigenvalues
+from roundoff are clamped to zero. Very small directions may be lost relative
+to dominant ones: forming the covariance squares the condition number, so a
+direct SVD is preferable for demanding numerical work. The two error estimates
+can differ at roundoff scale, including when all components are kept.
+
+The tests use Python's standard library and a C++17 compiler, with `CXX`,
+`CPPFLAGS`, and `CXXFLAGS` overrides. They check analytic spectra, projection
+identities, degenerate data, scaling and translation, and input validation.
+
 ## Spanning trees and Kirchhoff's theorem
 
 A spanning tree connects every vertex of a graph without forming a cycle.

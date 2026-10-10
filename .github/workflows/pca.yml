@@ -1,0 +1,33 @@
+name: PCA
+
+on:
+  pull_request:
+    paths:
+      - pca.cpp
+      - tests/test_pca.py
+      - .github/workflows/pca.yml
+  push:
+    branches: [master]
+    paths:
+      - pca.cpp
+      - tests/test_pca.py
+      - .github/workflows/pca.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: PCA (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check PCA spectra, projections, and reconstruction
+        run: python3 tests/test_pca.py
