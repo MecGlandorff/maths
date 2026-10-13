@@ -375,6 +375,20 @@ class AttentionTests(unittest.TestCase):
                 actual = [json.loads(line) for line in lines[start:start + 16]]
                 self.assertEqual(actual, expected)
 
+        precise = 1.2345678901234567
+        result = self.run_program("--input", "-", "--backward", "--temperature", precise,
+                                  input_text=serialize(((0,),), ((0,),), ((precise,),), ((precise,),)))
+        lines = result.stdout.splitlines()
+        for label in ("V (values)", "Output = weights * V", "G (upstream derivative)", "dL/dV"):
+            with self.subTest(label=label, precision=True):
+                start = lines.index(label + ":") + 1
+                self.assertEqual(json.loads(lines[start]), [precise])
+        for label, expected in (("Temperature", precise),
+                                ("Scalar probe L = sum(O * G)", precise * precise)):
+            with self.subTest(label=label, precision=True):
+                line, = (line for line in lines if line.startswith(label + ": "))
+                self.assertEqual(float(line.split(": ", 1)[1]), expected)
+
     def test_invalid_flags_dimensions_and_values(self):
         invalid_flags = [
             ("--unknown",), ("extra",), ("--input",), ("--temperature",),

@@ -247,9 +247,9 @@ void table(const std::string& label, const Matrix& matrix) {
 }
 
 void report(const Data& data, const Options& config, const Result& result) {
+    std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
     if (config.json) {
-        std::cout << std::setprecision(std::numeric_limits<double>::max_digits10)
-                  << "{\"query_count\":" << data.queries << ",\"key_count\":" << data.keys
+        std::cout << "{\"query_count\":" << data.queries << ",\"key_count\":" << data.keys
                   << ",\"key_dimensions\":" << data.keyDimensions
                   << ",\"value_dimensions\":" << data.valueDimensions
                   << ",\"temperature\":" << config.temperature
@@ -284,7 +284,7 @@ void report(const Data& data, const Options& config, const Result& result) {
         std::cout << "}\n";
         return;
     }
-    std::cout << std::setprecision(8) << "Scaled dot-product attention: " << data.queries
+    std::cout << "Scaled dot-product attention: " << data.queries
               << " queries, " << data.keys << " keys\nTemperature: " << config.temperature
               << "\nCausal mask: " << (config.causal ? "on" : "off") << '\n';
     table("Q (queries)", data.query);
