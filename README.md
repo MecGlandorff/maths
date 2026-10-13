@@ -240,6 +240,120 @@ c++ -std=c++17 -O2 magic_square.cpp -o magic_square
 ./magic_square 5
 ```
 
+## Attention: matrix operations inside a transformer
+
+How does a query decide which information to combine? `attention.cpp` explores
+a single scaled dot-product attention head and its derivatives, using only
+C++17. It displays the scores, attention weights, weighted output, and entropy
+of each weight distribution.
+
+Let $Q$ contain $m$ query rows, $K$ contain $n$ key rows, and $V$ contain $n$
+value rows. Queries and keys have $d_k$ coordinates; values have $d_v$.
+For temperature $T>0$, without a mask:
+
+$$
+S = \frac{QK^T}{\sqrt{d_k}T}, \qquad
+A_{ij}=\frac{\exp(S_{ij})}{\sum_\ell\exp(S_{i\ell})}, \qquad O=AV
+$$
+
+Each row of $A$ is a probability distribution over the keys, so an output row
+is a weighted average of the value rows. A lower temperature concentrates
+weights on the largest scores; tied scores remain tied. Temperature is an
+adjustable teaching parameter; the default $T=1$ matches the scaled attention
+formula in
+[Attention Is All You Need, section 3.2.1](https://arxiv.org/html/1706.03762v7#S3.SS2.SSS1).
+The division by $\sqrt{d_k}$ compensates for the growing dot-product variance
+when query and key coordinates are independent, zero-mean, and unit-variance.
+
+`--causal` allows query $i$ to use only keys $j\leq i$, including itself. Later
+positions receive exactly zero weight. This mode requires $m=n$; without a
+mask, different query and key counts are supported. In causal mode, the softmax
+denominator sums over visible keys only. Softmax subtracts the
+largest **visible** score before exponentiating, keeping exponentials at most
+one. The report's `scores` are finite values before masking; `weights` contain
+the zeros imposed by the mask. Entropy is $-\sum_j A_{ij}\log A_{ij}$ in nats,
+with zero-weight terms omitted.
+
+### Following the gradient
+
+`--backward` accepts a matrix $G$ with the same shape as $O$. It represents
+the derivative arriving from a later calculation. Holding $G$ fixed, the
+program differentiates the scalar probe $L=\sum_{i,d}O_{id}G_{id}$:
+
+$$
+B=GV^T, \qquad
+D_{ij}=A_{ij}\left(B_{ij}-\sum_\ell A_{i\ell}B_{i\ell}\right)
+$$
+
+$$
+\frac{\partial L}{\partial Q}=\frac{DK}{\sqrt{d_k}T}, \qquad
+\frac{\partial L}{\partial K}=\frac{D^TQ}{\sqrt{d_k}T}, \qquad
+\frac{\partial L}{\partial V}=A^TG
+$$
+
+Masked entries of $D$ are zero. The implementation evaluates the softmax
+derivative with paired contributions $A_{ij}A_{i\ell}(B_{ij}-B_{i\ell})$;
+forming value differences first makes identical values yield exactly zero
+query and key gradients. This shows the chain rule used in backpropagation.
+The program starts from supplied Q, K, and V matrices; learned projections,
+multiple heads, an optimizer, and the rest of a transformer are outside this
+example.
+
+### Run it
+
+```sh
+c++ -std=c++17 -O2 attention.cpp -o attention
+./attention
+./attention --temperature 0.25
+./attention --causal --backward
+./attention --backward --json
+python3 tests/test_attention.py
+```
+
+The built-in demo uses three queries and three keys with two coordinates per
+key and value. It includes a fixed signed upstream matrix when `--backward`
+is enabled; the report displays that matrix along with the gradients.
+
+Use `--input FILE` or `--input -` for custom data. The first four unsigned
+integers are `m n dk dv`, followed by Q, K, and V in row order. With
+`--backward`, append G; otherwise, extra values are rejected. For example,
+save this as `attention-data.txt`:
+
+```text
+1 2 1 1
+0
+-1 1
+-1 1
+1
+```
+
+Run `./attention --input attention-data.txt --temperature 2 --backward`.
+The two keys receive weights $1/2$, the output is zero, and the gradients are
+$\partial L/\partial Q=1/2$, $\partial L/\partial K=[0,0]^T$, and
+$\partial L/\partial V=[1/2,1/2]^T$. Remove the last line to use this file
+without `--backward`.
+
+Limits: 1–16 queries and keys, 1–8 key/value dimensions, and temperature from
+`1e-3` to `1e3`. Matrix entries must be finite decimal or scientific notation,
+either zero or with magnitude from `1e-100` to `1e6`. These bounds keep scores
+and gradient products finite. Very small weights or gradients can round to
+zero; saturated attention can have extremely small derivatives. Calculations
+use double precision, so sums and derivatives are approximate.
+
+Options may appear in any order, once each. `--help` works alone. Invalid
+dimensions, malformed numbers, missing/extra values, and unreadable files
+return 1 with a diagnostic on stderr and no stdout. Valid input returns 0.
+
+`--json` emits all input matrices, dimensions, temperature, mask setting,
+scores, weights, output, and entropy. `gradients` is `null` in forward mode;
+backward mode supplies `upstream`, `objective`, and the derivative matrices
+`query`, `key`, and `value`. Every matrix is an array of rows.
+
+The tests use Python's standard library and a C++17 compiler, honoring `CXX`,
+`CPPFLAGS`, and `CXXFLAGS`. They compare forward results to an independent
+high-precision calculation and gradients to finite differences, alongside
+analytic cases, masking, invariance checks, numeric bounds, and invalid input.
+
 ## PCA: linear algebra behind data compression
 
 How can we represent a dataset with fewer coordinates while losing as little
