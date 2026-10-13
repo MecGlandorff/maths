@@ -249,7 +249,7 @@ of each weight distribution.
 
 Let $Q$ contain $m$ query rows, $K$ contain $n$ key rows, and $V$ contain $n$
 value rows. Queries and keys have $d_k$ coordinates; values have $d_v$.
-For temperature $T>0$:
+For temperature $T>0$, without a mask:
 
 $$
 S = \frac{QK^T}{\sqrt{d_k}T}, \qquad
@@ -258,15 +258,17 @@ $$
 
 Each row of $A$ is a probability distribution over the keys, so an output row
 is a weighted average of the value rows. A lower temperature concentrates
-weights on the largest scores; tied scores remain tied. The default $T=1$
-matches the scaled attention formula in
+weights on the largest scores; tied scores remain tied. Temperature is an
+adjustable teaching parameter; the default $T=1$ matches the scaled attention
+formula in
 [Attention Is All You Need, section 3.2.1](https://arxiv.org/html/1706.03762v7#S3.SS2.SSS1).
 The division by $\sqrt{d_k}$ compensates for the growing dot-product variance
 when query and key coordinates are independent, zero-mean, and unit-variance.
 
 `--causal` allows query $i$ to use only keys $j\leq i$, including itself. Later
 positions receive exactly zero weight. This mode requires $m=n$; without a
-mask, different query and key counts are supported. Softmax subtracts the
+mask, different query and key counts are supported. In causal mode, the softmax
+denominator sums over visible keys only. Softmax subtracts the
 largest **visible** score before exponentiating, keeping exponentials at most
 one. The report's `scores` are finite values before masking; `weights` contain
 the zeros imposed by the mask. Entropy is $-\sum_j A_{ij}\log A_{ij}$ in nats,
