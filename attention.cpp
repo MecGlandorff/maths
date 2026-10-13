@@ -19,24 +19,28 @@ struct Options {
     std::string input;
     double temperature = 1;
     bool causal = false;
+    bool backward = false;
     bool json = false;
 };
 
 struct Data {
     int queries, keys, keyDimensions, valueDimensions;
-    Matrix query, key, value;
+    Matrix query, key, value, upstream;
 };
 
 struct Result {
     Matrix scores, weights, output;
     Vector entropy;
+    Matrix queryGradient, keyGradient, valueGradient;
+    double objective = 0;
 };
 
 void usage(std::ostream& out) {
-    out << "Usage: attention [--input FILE|-] [--temperature T] [--causal] [--json]\n"
+    out << "Usage: attention [--input FILE|-] [--temperature T] [--causal] [--backward] [--json]\n"
            "       attention --help\n"
            "Default: three queries and keys, with two-dimensional keys and values.\n"
            "Input: m n dk dv, then row-major Q (m*dk), K (n*dk), V (n*dv).\n"
+           "With --backward, append G (m*dv), the upstream derivative dL/dO.\n"
            "Limits: m,n=1..16; dk,dv=1..8; nonzero magnitudes 1e-100..1e6.\n"
            "Temperature: 1e-3..1e3 (default 1). Causal mode requires m=n.\n";
 }
@@ -94,6 +98,8 @@ Options options(int argc, char** argv) {
             result.json = true;
         } else if (arg == "--causal" && !result.causal) {
             result.causal = true;
+        } else if (arg == "--backward" && !result.backward) {
+            result.backward = true;
         } else if (arg == "--input" && !inputSeen && i + 1 < argc) {
             inputSeen = true;
             result.input = argv[++i];
@@ -121,10 +127,10 @@ Matrix readMatrix(std::istream& input, int rows, int columns) {
     return matrix;
 }
 
-Data readData(std::istream& input) {
+Data readData(std::istream& input, bool backward) {
     std::string m, n, dk, dv;
     if (!(input >> m >> n >> dk >> dv)) throw std::invalid_argument("Missing input dimensions.");
-    Data data{integer(m), integer(n), integer(dk), integer(dv), {}, {}, {}};
+    Data data{integer(m), integer(n), integer(dk), integer(dv), {}, {}, {}, {}};
     if (data.queries < 1 || data.queries > 16 || data.keys < 1 || data.keys > 16
         || data.keyDimensions < 1 || data.keyDimensions > 8
         || data.valueDimensions < 1 || data.valueDimensions > 8)
@@ -132,6 +138,7 @@ Data readData(std::istream& input) {
     data.query = readMatrix(input, data.queries, data.keyDimensions);
     data.key = readMatrix(input, data.keys, data.keyDimensions);
     data.value = readMatrix(input, data.keys, data.valueDimensions);
+    if (backward) data.upstream = readMatrix(input, data.queries, data.valueDimensions);
     std::string extra;
     if (input >> extra) throw std::invalid_argument("Unexpected trailing input.");
     if (input.bad()) throw std::invalid_argument("Could not read input.");
@@ -140,7 +147,8 @@ Data readData(std::istream& input) {
 
 Data demo() {
     return {3, 3, 2, 2, {{1, 0}, {0, 1}, {1, 1}},
-            {{1, 0}, {0, 1}, {-1, 1}}, {{1, 0}, {0, 2}, {-1, -1}}};
+            {{1, 0}, {0, 1}, {-1, 1}}, {{1, 0}, {0, 2}, {-1, -1}},
+            {{1, 0.5}, {-0.5, 1}, {0.25, -1}}};
 }
 
 Result attention(const Data& data, const Options& config) {
@@ -176,6 +184,40 @@ Result attention(const Data& data, const Options& config) {
         }
     }
     return result;
+}
+
+void backward(const Data& data, const Options& config, Result& result) {
+    result.queryGradient.assign(data.queries, Vector(data.keyDimensions, 0));
+    result.keyGradient.assign(data.keys, Vector(data.keyDimensions, 0));
+    result.valueGradient.assign(data.keys, Vector(data.valueDimensions, 0));
+    const double scale = 1 / (std::sqrt(static_cast<double>(data.keyDimensions)) * config.temperature);
+    for (int i = 0; i < data.queries; ++i) {
+        const int visible = config.causal ? i + 1 : data.keys;
+        for (int d = 0; d < data.valueDimensions; ++d)
+            result.objective += result.output[i][d] * data.upstream[i][d];
+        Vector scoreGradient(data.keys, 0);
+        // Apply the softmax Jacobian using pairs:
+        // D_j = sum_l A_j*A_l*(B_j-B_l), with B=G*V^T.
+        // Taking value differences first makes equal values give exactly zero.
+        for (int j = 0; j < visible; ++j) {
+            for (int l = j + 1; l < visible; ++l) {
+                double difference = 0;
+                for (int d = 0; d < data.valueDimensions; ++d)
+                    difference += data.upstream[i][d] * (data.value[j][d] - data.value[l][d]);
+                const double pair = result.weights[i][j] * result.weights[i][l] * difference;
+                scoreGradient[j] += pair;
+                scoreGradient[l] -= pair;
+            }
+        }
+        for (int j = 0; j < visible; ++j) {
+            for (int d = 0; d < data.keyDimensions; ++d) {
+                result.queryGradient[i][d] += scale * scoreGradient[j] * data.key[j][d];
+                result.keyGradient[j][d] += scale * scoreGradient[j] * data.query[i][d];
+            }
+            for (int d = 0; d < data.valueDimensions; ++d)
+                result.valueGradient[j][d] += result.weights[i][j] * data.upstream[i][d];
+        }
+    }
 }
 
 void array(const Vector& values) {
@@ -225,7 +267,21 @@ void report(const Data& data, const Options& config, const Result& result) {
         array(result.output);
         std::cout << ",\"entropy\":";
         array(result.entropy);
-        std::cout << ",\"gradients\":null}\n";
+        std::cout << ",\"gradients\":";
+        if (!config.backward) {
+            std::cout << "null";
+        } else {
+            std::cout << "{\"upstream\":";
+            array(data.upstream);
+            std::cout << ",\"objective\":" << result.objective << ",\"query\":";
+            array(result.queryGradient);
+            std::cout << ",\"key\":";
+            array(result.keyGradient);
+            std::cout << ",\"value\":";
+            array(result.valueGradient);
+            std::cout << '}';
+        }
+        std::cout << "}\n";
         return;
     }
     std::cout << std::setprecision(8) << "Scaled dot-product attention: " << data.queries
@@ -240,6 +296,13 @@ void report(const Data& data, const Options& config, const Result& result) {
     std::cout << "Row entropy (nats): ";
     array(result.entropy);
     std::cout << '\n';
+    if (config.backward) {
+        table("G (upstream derivative)", data.upstream);
+        std::cout << "Scalar probe L = sum(O * G): " << result.objective << '\n';
+        table("dL/dQ", result.queryGradient);
+        table("dL/dK", result.keyGradient);
+        table("dL/dV", result.valueGradient);
+    }
 }
 }  // namespace
 
@@ -254,13 +317,15 @@ int main(int argc, char** argv) {
         if (config.input.empty()) {
             data = demo();
         } else if (config.input == "-") {
-            data = readData(std::cin);
+            data = readData(std::cin, config.backward);
         } else {
             std::ifstream input(config.input);
             if (!input) throw std::invalid_argument("Could not open input file.");
-            data = readData(input);
+            data = readData(input, config.backward);
         }
-        report(data, config, attention(data, config));
+        Result result = attention(data, config);
+        if (config.backward) backward(data, config, result);
+        report(data, config, result);
     } catch (const std::invalid_argument& error) {
         std::cerr << "Invalid input: " << error.what() << '\n';
         usage(std::cerr);
