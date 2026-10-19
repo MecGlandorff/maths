@@ -759,6 +759,113 @@ c++ -std=c++17 -O2 fourier_square_wave.cpp -o fourier_square_wave
 ./fourier_square_wave 20
 ```
 
+## Gradient descent and learning rates
+
+`gradient_descent.cpp` trains a small linear model, $\hat y=b+wx$, and shows
+every update. This is the same gradient-based learning idea used in AI, with
+two parameters so that we can also calculate the optimum and convergence
+behavior directly.
+
+For $n$ samples, let $X$ have rows $[1,x_i]$ and $\theta=[b,w]^T$. The loss,
+gradient, and simultaneous parameter update are:
+
+$$
+L(\theta)=\frac{\|X\theta-y\|_2^2}{2n},\qquad
+\nabla L=\frac{X^T(X\theta-y)}{n},\qquad
+\theta_{k+1}=\theta_k-\eta\nabla L(\theta_k).
+$$
+
+The Hessian tells us how sharply the loss curves in each direction:
+
+$$
+H=\frac{X^TX}{n}=
+\begin{bmatrix}1&\bar x\\\bar x&\overline{x^2}\end{bmatrix}.
+$$
+
+Along an eigenvector with eigenvalue $\lambda$, each update multiplies the
+parameter error by $1-\eta\lambda$. All positive-curvature directions contract
+when $0<\eta<2/\lambda_{\max}$. The default is $\eta=1/\lambda_{\max}$.
+The report includes the Hessian, ascending eigenvalues, condition number,
+open interval of contracting rates, and worst error factor over positive
+eigenvalues. See [Cornell's notes on gradient descent](https://www.cs.cornell.edu/courses/cs6241/2025sp/lec/2025-01-30.html)
+for the error recurrence.
+
+Try the three built-in datasets:
+
+```sh
+c++ -std=c++17 -O2 gradient_descent.cpp -o gradient_descent
+./gradient_descent
+./gradient_descent --example shifted --steps 20
+./gradient_descent --example constant --start 3 -1
+./gradient_descent --rate 1 --steps 6     # Boundary: the slope oscillates.
+./gradient_descent --rate 1.1 --steps 6   # The slope error grows.
+./gradient_descent --json
+python3 tests/test_gradient_descent.py
+```
+
+The default `centered` example uses $x=(-2,-1,0,1,2)$ and $y=1+2x$.
+Its eigenvalues are 1 and 2, so the default rate is 0.5. From $(b,w)=(0,0)$,
+the first update gives $(0.5,2)$; subsequent updates halve the remaining bias
+error. The loss starts at 4.5, then falls to 0.125 and 0.03125.
+
+`shifted` adds 100 to each input while keeping the targets. Its optimum is
+$(b,w)=(-199,2)$ and its condition number is about 50 million, compared with
+2 for `centered`. Centering preserves what the model can fit but changes the
+geometry of its parameter updates.
+
+`constant` uses $x=2$ for every sample, with the same five targets. Its
+Hessian has rank one. Any parameters satisfying $b+2w=1$ minimize the loss,
+which is 4. The reference solution $(0.2,0.4)$ has the smallest Euclidean
+norm. Gradient descent preserves the starting component in the nullspace:
+from a nonzero start it may reach a different minimizer. The singular
+condition number is shown as undefined (`null` in JSON), and the reported
+error factor excludes the zero eigenvalue.
+
+For custom data, pass a file or standard input with a sample count followed
+by that many `x y` pairs; whitespace separates values:
+
+```sh
+printf '3\n-1 -1\n0 1\n1 3\n' | ./gradient_descent --input - --steps 30
+```
+
+Options may appear once each. `--input` and `--example` are mutually
+exclusive; `--help` must appear alone. `--start B W` sets the initial bias
+and weight. Limits are 1–256 samples, 0–1000 steps (default 12), and rates
+from `1e-15` through `1e6`. Input values and initial parameters must be zero
+or have magnitude between `1e-6` and `1e6`. Decimal and scientific notation
+are accepted; nonfinite values, missing pairs, and trailing input are errors.
+
+Both output formats include step zero and every completed update, with the
+loss and both gradient components. JSON also exposes `reference` for the
+closed-form fit, `rate_regime` (`contracting`, `boundary`, or `unstable`),
+`requested_steps`, `completed_steps`, and `stop_reason`. An unstable rate
+describes a worst-case direction: a run that starts at the optimum or never
+excites that direction need not diverge. At the boundary an excited largest
+eigenmode oscillates. These labels use the computed floating-point spectrum.
+
+The program runs the requested number of updates without an early
+convergence test. Exit code 0 means `steps_completed`, not proof of
+convergence. Before either new coefficient would exceed magnitude `1e100`,
+it stops with `magnitude_limit` and exit code 2, preserving the last complete
+finite state. Together with the input bounds, this keeps residuals, squared
+losses, gradients, and proposed updates within double-precision range.
+Invalid input returns 1, writes diagnostics to stderr, and leaves stdout empty.
+
+Calculations use double precision and both formats retain `max_digits10`.
+The reference uses centered variance and covariance. The smaller eigenvalue
+is computed as $\operatorname{Var}(x)/\lambda_{\max}$ to avoid subtracting
+nearly equal roots. Reference loss is evaluated in centered coordinates;
+with nearly constant inputs, evaluating its rounded coefficients directly
+can give a less accurate result. Very poor conditioning still limits
+coefficient accuracy, and an error factor close to one may round to one.
+A printed zero loss does not establish an exact result.
+
+The tests use Python's standard library and a temporary C++17 build, with
+`CXX`, `CPPFLAGS`, and `CXXFLAGS` overrides. They compare trajectories with
+independent rational and high-precision calculations, and cover spectral
+identities, constant inputs, unstable rates, input validation, and bounds.
+GitHub Actions runs them on Linux and macOS.
+
 ## Galton board
 
 `galton_board.cpp` sends balls through independent, equally likely left/right
