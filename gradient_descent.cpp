@@ -51,6 +51,13 @@ struct Run {
     bool limited = false;
 };
 
+struct Analysis {
+    int rank;
+    double smallest, condition, upperRate, contraction;
+    double referenceBias, referenceWeight, referenceLoss;
+    std::string regime;
+};
+
 void usage(std::ostream& out) {
     out << "Usage: gradient_descent [--example centered|shifted|constant | --input FILE|-]\n"
            "                        [--rate R] [--steps N] [--start B W] [--json]\n"
@@ -183,15 +190,17 @@ Geometry geometry(const Data& data) {
     g.xAnchor = data.front().x;
     g.yAnchor = data.front().y;
     const double count = static_cast<double>(data.size());
-    Sum x, y;
+    Sum x, y, rawX, rawY;
     for (const auto& row : data) {
         x.add(row.x - g.xAnchor);
         y.add(row.y - g.yAnchor);
+        rawX.add(row.x);
+        rawY.add(row.y);
     }
     g.xOffset = x.value() / count;
     g.yOffset = y.value() / count;
-    g.meanX = g.xAnchor + g.xOffset;
-    g.meanY = g.yAnchor + g.yOffset;
+    g.meanX = rawX.value() / count;
+    g.meanY = rawY.value() / count;
     Sum variance, covariance;
     for (const auto& row : data) {
         // Keep the mean as anchor + offset: adjacent doubles can have a mean
@@ -206,6 +215,42 @@ Geometry geometry(const Data& data) {
     g.meanSquare = std::fma(g.meanX, g.meanX, g.variance);
     g.largest = (1 + g.meanSquare + std::hypot(1 - g.meanSquare, 2 * g.meanX)) / 2;
     return g;
+}
+
+Analysis analyze(const Data& data, const Geometry& g, double rate) {
+    Analysis a{};
+    a.rank = g.variance == 0 ? 1 : 2;
+    // det(H) = Var(x). Subtracting the two roots loses the smaller one
+    // when the feature has a large offset or very little variation.
+    a.smallest = g.variance / g.largest;
+    a.condition = a.rank == 1 ? 0 : g.largest / a.smallest;
+    a.upperRate = 2 / g.largest;
+    const double scaledRate = rate * g.largest;
+    a.regime = scaledRate < 2 ? "contracting" : (scaledRate == 2 ? "boundary" : "unstable");
+    a.contraction = std::abs(1 - scaledRate);
+    if (a.rank == 2)
+        a.contraction = std::max(a.contraction, std::abs(1 - rate * a.smallest));
+
+    if (a.rank == 1) {
+        // Among b + c*w = mean(y), this is the minimum Euclidean norm pair.
+        a.referenceBias = g.meanY / (1 + g.meanSquare);
+        a.referenceWeight = g.meanX * a.referenceBias;
+    } else {
+        a.referenceWeight = g.covariance / g.variance;
+        Sum intercepts;
+        for (const auto& row : data)
+            intercepts.add(std::fma(-a.referenceWeight, row.x, row.y));
+        a.referenceBias = intercepts.value() / static_cast<double>(data.size());
+    }
+    Sum squares;
+    for (const auto& row : data) {
+        const double dx = (row.x - g.xAnchor) - g.xOffset;
+        const double dy = (row.y - g.yAnchor) - g.yOffset;
+        const double residual = std::fma(a.referenceWeight, dx, -dy);
+        squares.add(residual * residual);
+    }
+    a.referenceLoss = squares.value() / (2 * static_cast<double>(data.size()));
+    return a;
 }
 
 State evaluate(const Data& data, int step, double bias, double weight) {
@@ -238,8 +283,18 @@ Run descend(const Data& data, const Options& config, double rate) {
     return result;
 }
 
-void printJson(const Data& data, const Options& config, double rate, const Run& run) {
+void printJson(const Data& data, const Options& config, const Geometry& g,
+               const Analysis& a, double rate, const Run& run) {
     std::cout << "{\"samples\":" << data.size() << ",\"learning_rate\":" << rate
+              << ",\"hessian\":[[1," << g.meanX << "],[" << g.meanX << ',' << g.meanSquare << "]]"
+              << ",\"eigenvalues\":[" << a.smallest << ',' << g.largest << ']'
+              << ",\"rank\":" << a.rank << ",\"condition_number\":";
+    if (a.rank == 1) std::cout << "null";
+    else std::cout << a.condition;
+    std::cout << ",\"stable_rate_upper_bound\":" << a.upperRate
+              << ",\"rate_regime\":\"" << a.regime << "\",\"contraction_factor\":" << a.contraction
+              << ",\"reference\":{\"bias\":" << a.referenceBias << ",\"weight\":" << a.referenceWeight
+              << ",\"loss\":" << a.referenceLoss << '}'
               << ",\"requested_steps\":" << config.steps
               << ",\"completed_steps\":" << run.trajectory.back().step
               << ",\"stop_reason\":\"" << (run.limited ? "magnitude_limit" : "steps_completed")
@@ -255,10 +310,22 @@ void printJson(const Data& data, const Options& config, double rate, const Run& 
     std::cout << "]}\n";
 }
 
-void printText(const Data& data, double rate, const Run& run) {
+void printText(const Data& data, const Geometry& g, const Analysis& a, double rate, const Run& run) {
     std::cout << "Gradient descent: y = bias + weight*x\n"
-              << "Samples: " << data.size() << "\nLearning rate: " << rate
-              << "\nstep  bias  weight  loss  gradient_bias  gradient_weight\n";
+              << "Samples: " << data.size() << "\nHessian: [[1, " << g.meanX << "], ["
+              << g.meanX << ", " << g.meanSquare << "]]\n"
+              << "Eigenvalues (ascending): " << a.smallest << ", " << g.largest
+              << "\nRank: " << a.rank << "\nCondition number: ";
+    if (a.rank == 1) std::cout << "undefined (singular)";
+    else std::cout << a.condition;
+    std::cout << "\nLearning rate: " << rate << "\nContracting interval: 0 < rate < " << a.upperRate
+              << "\nRate regime: " << a.regime
+              << "\nWorst error factor on positive-curvature directions: " << a.contraction
+              << "\nReference fit: bias=" << a.referenceBias << ", weight=" << a.referenceWeight
+              << ", loss=" << a.referenceLoss << '\n';
+    if (a.rank == 1)
+        std::cout << "Reference has minimum norm; a nonzero start can retain a nullspace component.\n";
+    std::cout << "step  bias  weight  loss  gradient_bias  gradient_weight\n";
     for (const auto& state : run.trajectory)
         std::cout << state.step << "  " << state.bias << "  " << state.weight
                   << "  " << state.loss << "  " << state.biasGradient << "  " << state.weightGradient << '\n';
@@ -285,10 +352,11 @@ int main(int argc, char** argv) {
         }
         const Geometry g = geometry(data);
         const double rate = config.rate == 0 ? 1 / g.largest : config.rate;
+        const Analysis a = analyze(data, g, rate);
         const Run run = descend(data, config, rate);
         std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
-        if (config.json) printJson(data, config, rate, run);
-        else printText(data, rate, run);
+        if (config.json) printJson(data, config, g, a, rate, run);
+        else printText(data, g, a, rate, run);
         return run.limited ? 2 : 0;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
