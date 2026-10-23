@@ -47,6 +47,8 @@ struct Fit {
     double lambda, bias = 0, loss = 0, penalty = 0, norm = 0;
     Pair weights{};
     std::vector<double> predictions, residuals;
+    Pair shrinkage{};
+    double effectiveDf = 1; // The unpenalized intercept contributes one.
 };
 
 void usage(std::ostream& out) {
@@ -237,8 +239,14 @@ Geometry geometry(const Data& data) {
 }
 
 Fit fit(const Data& data, const Geometry& g, double lambda) {
-    Fit result{lambda, 0, 0, 0, 0, {}, {}, {}};
+    Fit result{lambda, 0, 0, 0, 0, {}, {}, {}, {}, 1};
     const double count = static_cast<double>(data.size());
+    for (int j = 0; j < 2; ++j) {
+        const double value = g.eigenvalues[j];
+        result.shrinkage[j] = lambda > 0 ? value / (value + lambda)
+                                       : (value > g.threshold ? 1 : 0);
+        result.effectiveDf += result.shrinkage[j];
+    }
     if (lambda == 0 && g.rank == 1) {
         const auto& direction = g.eigenvectors[0];
         Sum projected;
@@ -294,8 +302,26 @@ void array(const Values& values) {
     std::cout << ']';
 }
 
-void printJson(const Data& data, const std::vector<Fit>& fits) {
-    std::cout << "{\"samples\":" << data.size() << ",\"fits\":[";
+void condition(const Geometry& g, double lambda, bool json) {
+    if (lambda == 0 && g.rank < 2) std::cout << (json ? "null" : "undefined");
+    else std::cout << (g.eigenvalues[0] + lambda) / (g.eigenvalues[1] + lambda);
+}
+
+void printJson(const Data& data, const Geometry& g, const std::vector<Fit>& fits) {
+    std::cout << "{\"samples\":" << data.size() << ",\"feature_means\":";
+    array(Pair{g.means[0], g.means[1]});
+    std::cout << ",\"target_mean\":" << g.means[2]
+              << ",\"covariance\":[[" << g.a << ',' << g.cross << "],[" << g.cross << ',' << g.b << "]]"
+              << ",\"eigenvalues\":";
+    array(g.eigenvalues);
+    std::cout << ",\"eigenvectors\":[";
+    array(g.eigenvectors[0]);
+    std::cout << ',';
+    array(g.eigenvectors[1]);
+    std::cout << "],\"rank\":" << g.rank << ",\"rank_threshold\":" << g.threshold
+              << ",\"condition_number\":";
+    condition(g, 0, true);
+    std::cout << ",\"fits\":[";
     bool first = true;
     for (const auto& f : fits) {
         if (!first) std::cout << ',';
@@ -304,7 +330,11 @@ void printJson(const Data& data, const std::vector<Fit>& fits) {
         array(f.weights);
         std::cout << ",\"data_loss\":" << f.loss << ",\"penalty\":" << f.penalty
                   << ",\"objective\":" << f.loss + f.penalty << ",\"weight_norm\":" << f.norm
-                  << ",\"predictions\":";
+                  << ",\"shrinkage\":";
+        array(f.shrinkage);
+        std::cout << ",\"effective_df\":" << f.effectiveDf << ",\"regularized_condition\":";
+        condition(g, f.lambda, true);
+        std::cout << ",\"predictions\":";
         array(f.predictions);
         std::cout << ",\"residuals\":";
         array(f.residuals);
@@ -313,13 +343,28 @@ void printJson(const Data& data, const std::vector<Fit>& fits) {
     std::cout << "]}\n";
 }
 
-void printText(const Data& data, const std::vector<Fit>& fits) {
+void printText(const Data& data, const Geometry& g, const std::vector<Fit>& fits) {
     std::cout << "Ridge regression: y = bias + w1*x1 + w2*x2\nSamples: " << data.size()
               << "\nThe intercept is unpenalized; features are centered without rescaling.\n"
-              << "lambda  bias  w1  w2  data_loss  penalty  objective  weight_norm\n";
+              << "Feature means: " << g.means[0] << ", " << g.means[1] << "\nTarget mean: " << g.means[2]
+              << "\nCovariance: [[" << g.a << ", " << g.cross << "], [" << g.cross << ", " << g.b << "]]"
+              << "\nEigenvalues (descending): " << g.eigenvalues[0] << ", " << g.eigenvalues[1]
+              << "\nEigenvectors (same order): [" << g.eigenvectors[0][0] << ", " << g.eigenvectors[0][1]
+              << "], [" << g.eigenvectors[1][0] << ", " << g.eigenvectors[1][1] << ']'
+              << "\nNumerical rank: " << g.rank << "\nRank threshold: " << g.threshold << "\nCondition number: ";
+    condition(g, 0, false);
+    std::cout << "\nlambda  bias  w1  w2  data_loss  penalty  objective  weight_norm\n";
     for (const auto& f : fits)
         std::cout << f.lambda << "  " << f.bias << "  " << f.weights[0] << "  " << f.weights[1]
                   << "  " << f.loss << "  " << f.penalty << "  " << f.loss + f.penalty << "  " << f.norm << '\n';
+    std::cout << "\nSpectral effects\nlambda  shrink_max  shrink_min  effective_df  regularized_condition\n";
+    for (const auto& f : fits) {
+        std::cout << f.lambda << "  " << f.shrinkage[0] << "  " << f.shrinkage[1] << "  " << f.effectiveDf << "  ";
+        condition(g, f.lambda, false);
+        std::cout << '\n';
+    }
+    if (g.rank < 2)
+        std::cout << "At lambda=0, directions at or below the rank threshold are discarded.\n";
 }
 } // namespace
 
@@ -342,8 +387,8 @@ int main(int argc, char** argv) {
         std::vector<Fit> fits;
         for (double lambda : config.lambdas) fits.push_back(fit(data, g, lambda));
         std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
-        if (config.json) printJson(data, fits);
-        else printText(data, fits);
+        if (config.json) printJson(data, g, fits);
+        else printText(data, g, fits);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
