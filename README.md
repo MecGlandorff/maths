@@ -866,6 +866,130 @@ independent rational and high-precision calculations, and cover spectral
 identities, constant inputs, unstable rates, input validation, and bounds.
 GitHub Actions runs them on Linux and macOS.
 
+## Ridge regression and spectral shrinkage
+
+`ridge_regression.cpp` fits $\hat y=b+w_1x_1+w_2x_2$ for several strengths
+of regularization. Two nearly identical features can produce large,
+opposing weights. Ridge penalizes their squared size, which can make the
+fit less sensitive to small changes in the data.
+
+The objective uses the **mean** squared residual and leaves the intercept
+unpenalized:
+
+$$
+J_\lambda(b,w)=\frac{1}{2n}\sum_i(b+x_i^Tw-y_i)^2+
+\frac{\lambda}{2}\|w\|_2^2.
+$$
+
+Center the features and targets to obtain $X_c$ and $y_c$. With
+$H=X_c^TX_c/n$ and $c=X_c^Ty_c/n$, positive $\lambda$ gives:
+
+$$
+w_\lambda=(H+\lambda I)^{-1}c,\qquad
+b_\lambda=\bar y-\bar x^Tw_\lambda.
+$$
+
+The code solves this two-variable system without forming its inverse.
+For a formulation that uses a sum of squared residuals, the equivalent
+penalty parameter is $n\lambda$. The unpenalized intercept and the role
+of feature units are discussed in [Ryan Tibshirani's ridge regression notes](https://stat.cmu.edu/~ryantibs/datamining/lectures/16-modr1.pdf).
+This explorer centers the inputs but keeps their original scales; rescaling
+a feature changes the penalty's meaning.
+
+If $Hv_j=\mu_jv_j$, the fitted component in that direction is
+$(v_j^Tc)/(\mu_j+\lambda)$. Relative to the unregularized component, its
+shrinkage factor is $\mu_j/(\mu_j+\lambda)$: small eigenvalues receive
+stronger shrinkage. Equivalently, if $\sigma_j$ is a singular value of
+$X_c$, the factor is $\sigma_j^2/(\sigma_j^2+n\lambda)$.
+The effective degrees of freedom are:
+
+$$
+\operatorname{df}(\lambda)=1+\sum_{j=1}^2\frac{\mu_j}{\mu_j+\lambda}.
+$$
+
+The extra one counts the intercept. This measures the fitted values'
+flexibility, rather than counting nonzero weights. See [Penn State's
+ridge regression lesson](https://online.stat.psu.edu/stat508/Lesson06.html)
+for the connection with the trace of the fitted-value matrix.
+
+```sh
+c++ -std=c++17 -O2 ridge_regression.cpp -o ridge_regression
+./ridge_regression
+./ridge_regression --example collinear --lambdas 0,1
+./ridge_regression --example orthogonal --lambdas 0,0.1,1,10
+./ridge_regression --lambdas 0,0.001,0.01,0.1 --json
+python3 tests/test_ridge_regression.py
+```
+
+The default `near-collinear` example uses
+$t=(-2,-1,0,1,2)$ and $q=(1,-2,2,-2,1)$, with features $(t,t+0.01q)$
+and targets $1+3t+0.1q$. Its unregularized weights are approximately
+$(-7,10)$; at $\lambda=0.01$ they become $(1.37915,1.61396)$.
+The slope norm falls from about 12.21 to 2.12, while the training loss
+rises from nearly zero to about 0.00989. This illustrates a tradeoff;
+choosing a useful penalty for unseen data requires validation on that data.
+The program compares the requested penalties without selecting a winner.
+
+`collinear` uses $(t,t)$ with targets $1+3t$. At zero penalty the
+minimum-norm slopes are $(1.5,1.5)$. At $\lambda=1$ the slopes are
+$(1.2,1.2)$, the bias is 1, the data loss is 0.36, and the effective
+degrees of freedom are 1.8. `orthogonal` uses $(t,q)$ with targets
+$1+3t-2q$; its eigenvalues are 2.8 and 2, so the two shrinkage factors
+can be checked directly.
+
+For custom data, provide a sample count followed by `x1 x2 y` triples.
+Whitespace separates values; files and standard input are supported:
+
+```sh
+printf '4\n-1 -1 -4\n-1 1 0\n1 -1 2\n1 1 6\n' | ./ridge_regression --input - --lambdas 0,1
+```
+
+Inputs allow 1–256 samples. Coordinates and targets must be zero or have
+magnitude from `1e-6` through `1e3`. `--lambdas` takes 1–8 distinct,
+comma-separated values in the order to report, each zero or between
+`1e-6` and `1e6`; defaults are `0,0.01,0.1,1,10`. Decimal and scientific
+notation are accepted. Each option may appear once; `--input` and
+`--example` are mutually exclusive, and `--help` must appear alone.
+Invalid options, nonfinite values, missing triples, and trailing input
+return exit code 1 with diagnostics on stderr and no stdout. Success
+returns 0.
+
+The terminal report shows feature means, the covariance matrix, eigenvalues,
+eigenvectors, numerical rank, conditioning, fitted coefficients, losses,
+shrinkage, and effective degrees of freedom. JSON adds predictions and
+residuals for each sample; residuals are fitted minus observed values.
+`eigenvalues` are descending; each row of `eigenvectors` is the corresponding
+vector. `data_loss` is half the mean squared residual, `penalty` is
+$\lambda\|w\|_2^2/2$, and `objective` is their sum. Condition numbers
+describe the two slope directions, excluding the intercept.
+
+At $\lambda=0$, eigenvalues at or below
+$64\epsilon\mu_{\max}$ are discarded, where $\epsilon$ is double-precision
+machine epsilon. The resulting fit is the minimum slope norm solution on
+the retained subspace; with rank zero it predicts the target mean.
+The zero-penalty shrinkage factors are one for retained directions and
+zero otherwise. Singular or numerically rank-deficient condition numbers
+are undefined (`null` in JSON). Positive penalties use both original
+directions, even those below this cutoff, so comparison with the truncated
+zero-penalty baseline need not follow the same monotonic behavior as a
+path of positive penalties.
+
+Calculations use double precision, compensated sums, and centering with
+separate anchors and offsets. The smaller eigenvalue comes from a sum of
+squared two-row minors, avoiding subtraction of nearly equal products.
+The ridge solve similarly uses residual sums of squares. Predictions and
+losses are evaluated in centered coordinates; evaluating the rounded raw
+intercept and slopes can be less accurate for very poorly conditioned data.
+The bounded inputs, rank cutoff, and positive-penalty floor keep arithmetic
+within double range. Both output formats retain `max_digits10`; results
+remain floating-point approximations.
+
+The Python standard-library tests build in a temporary directory and accept
+`CXX`, `CPPFLAGS`, and `CXXFLAGS`. They check fits against independent
+normal-equation solutions, verify spectra and effective degrees of freedom,
+and cover invariants, rank deficiency, numerical bounds, and invalid input.
+GitHub Actions runs them on Linux and macOS.
+
 ## Galton board
 
 `galton_board.cpp` sends balls through independent, equally likely left/right
