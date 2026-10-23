@@ -259,17 +259,23 @@ Fit fit(const Data& data, const Geometry& g, double lambda) {
         const int q = 1 - p;
         const double pivot = (p == 0 ? g.a : g.b) + lambda;
         const double rho = g.cross / pivot;
-        Sum firstTarget, secondTarget, residualSquares;
+        Sum firstTarget, secondTarget, residualSquares, residualCross;
         for (const auto& row : g.centered) {
             const double residualFeature = std::fma(-rho, row[p], row[q]);
             firstTarget.add(row[p] * row[2]);
             secondTarget.add(residualFeature * row[2]);
             residualSquares.add(residualFeature * residualFeature);
+            residualCross.add(row[p] * residualFeature);
         }
-        // Equivalent to b+lambda-cross^2/pivot, evaluated as a sum of squares.
-        const double denominator = residualSquares.value() / count + lambda * (1 + rho * rho);
-        result.weights[q] = secondTarget.value() / count / denominator;
-        result.weights[p] = std::fma(-rho, result.weights[q], firstTarget.value() / count / pivot);
+        // In the basis (u, v-rho*u), rounded rho leaves a small off-diagonal
+        // term delta. Keeping it matters when lambda is tiny next to Var(u).
+        const double delta = std::fma(-lambda, rho, residualCross.value() / count);
+        const double diagonal = residualSquares.value() / count + lambda * (1 + rho * rho);
+        const double denominator = std::fma(-delta / pivot, delta, diagonal);
+        const double first = firstTarget.value() / count / pivot;
+        result.weights[q] = std::fma(-delta, first, secondTarget.value() / count) / denominator;
+        result.weights[p] = std::fma(-rho, result.weights[q],
+                                    std::fma(-delta / pivot, result.weights[q], first));
     }
     Sum intercepts, squares;
     for (std::size_t i = 0; i < data.size(); ++i) {

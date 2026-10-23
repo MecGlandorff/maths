@@ -977,7 +977,8 @@ path of positive penalties.
 Calculations use double precision, compensated sums, and centering with
 separate anchors and offsets. The smaller eigenvalue comes from a sum of
 squared two-row minors, avoiding subtraction of nearly equal products.
-The ridge solve similarly uses residual sums of squares. Predictions and
+The ridge solve similarly uses residual sums of squares and retains the small
+cross term left by its rounded change of basis. Predictions and
 losses are evaluated in centered coordinates; evaluating the rounded raw
 intercept and slopes can be less accurate for very poorly conditioned data.
 The bounded inputs, rank cutoff, and positive-penalty floor keep arithmetic
