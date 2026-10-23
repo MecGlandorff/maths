@@ -896,15 +896,15 @@ of feature units are discussed in [Ryan Tibshirani's ridge regression notes](htt
 This explorer centers the inputs but keeps their original scales; rescaling
 a feature changes the penalty's meaning.
 
-If $Hv_j=\mu_jv_j$, the fitted component in that direction is
-$(v_j^Tc)/(\mu_j+\lambda)$. Relative to the unregularized component, its
-shrinkage factor is $\mu_j/(\mu_j+\lambda)$: small eigenvalues receive
-stronger shrinkage. Equivalently, if $\sigma_j$ is a singular value of
-$X_c$, the factor is $\sigma_j^2/(\sigma_j^2+n\lambda)$.
+For $\lambda>0$, if $Hv_j=\mu_jv_j$, the slope coefficient along $v_j$ is
+$(v_j^Tc)/(\mu_j+\lambda)$. When $\mu_j>0$, its shrinkage factor relative
+to the unregularized coefficient is $\mu_j/(\mu_j+\lambda)$: small
+eigenvalues receive stronger shrinkage. Equivalently, if $\sigma_j$ is a
+singular value of $X_c$, the factor is $\sigma_j^2/(\sigma_j^2+n\lambda)$.
 The effective degrees of freedom are:
 
 $$
-\operatorname{df}(\lambda)=1+\sum_{j=1}^2\frac{\mu_j}{\mu_j+\lambda}.
+\operatorname{df}(\lambda)=1+\sum_{j=1}^2\frac{\mu_j}{\mu_j+\lambda},\qquad\lambda>0.
 $$
 
 The extra one counts the intercept. This measures the fitted values'
@@ -968,9 +968,11 @@ $64\epsilon\mu_{\max}$ are discarded, where $\epsilon$ is double-precision
 machine epsilon. The resulting fit is the minimum slope norm solution on
 the retained subspace; with rank zero it predicts the target mean.
 The zero-penalty shrinkage factors are one for retained directions and
-zero otherwise. Singular or numerically rank-deficient condition numbers
-are undefined (`null` in JSON). Positive penalties use both original
-directions, even those below this cutoff, so comparison with the truncated
+zero otherwise. When numerical rank is below two, `condition_number` and
+zero-penalty `regularized_condition` are undefined (`null` in JSON).
+For positive penalties, `regularized_condition` is
+$(\mu_{\max}+\lambda)/(\mu_{\min}+\lambda)$. These fits use both original
+directions, even those below the cutoff, so comparison with the truncated
 zero-penalty baseline need not follow the same monotonic behavior as a
 path of positive penalties.
 
