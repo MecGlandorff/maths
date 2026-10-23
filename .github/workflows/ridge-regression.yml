@@ -1,0 +1,33 @@
+name: Ridge regression
+
+on:
+  pull_request:
+    paths:
+      - ridge_regression.cpp
+      - tests/test_ridge_regression.py
+      - .github/workflows/ridge-regression.yml
+  push:
+    branches: [master]
+    paths:
+      - ridge_regression.cpp
+      - tests/test_ridge_regression.py
+      - .github/workflows/ridge-regression.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Ridge regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check ridge fits, shrinkage, and degrees of freedom
+        run: python3 tests/test_ridge_regression.py
