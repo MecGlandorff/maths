@@ -1100,21 +1100,22 @@ with the same bounds, exactly one per node, and a positive total. Each is
 normalized independently; both default to uniform. Decimal and scientific
 notation are accepted. Numeric overflow and underflow to zero are rejected;
 finite nonzero subnormal damping values are accepted. Each option may appear
-once. `--input` and `--example` are mutually exclusive; `--help` must appear alone.
+once. `--input` and `--example` are mutually exclusive; `--help` must appear
+alone, prints usage, and exits 0.
 
 The terminal report shows $S$, $G$, the descending ranking, completed update
 count, residual, error estimate, and stop reason. Node IDs start at one;
 exactly equal scores are ordered by node ID. Numerical accuracy of the
 scores alone does not settle the ordering of almost tied nodes.
 
-JSON additionally gives `personalization`, `initial_scores`, `dangling_nodes`,
+JSON includes `personalization`, `initial_scores`, `dangling_nodes`,
 and final `scores` in node order. `ranking` lists `{node, score}` objects.
 `history` is empty unless `--trace` is selected; then it contains step zero
 and every completed update, each with `iteration`, `scores`, `residual_l1`,
 and `error_bound`. `--trace` also adds a terminal table. History's final row
 always describes the reported result.
 
-Exit code 0 means `stop_reason: tolerance` and `converged: true`.
+For a ranking run, exit code 0 means `stop_reason: tolerance` and `converged: true`.
 Exit code 2 means `iteration_limit` and `converged: false`; the complete
 current result is still printed. A zero update budget can therefore return
 either 0 or 2, depending on the initial residual. Invalid options, nonfinite
