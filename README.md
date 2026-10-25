@@ -993,6 +993,151 @@ normal-equation solutions, verify spectra and effective degrees of freedom,
 and cover invariants, rank deficiency, numerical bounds, and invalid input.
 GitHub Actions runs them on Linux and macOS.
 
+## PageRank, eigenvectors, and personalized ranking
+
+`pagerank.cpp` ranks a small directed network by repeatedly passing probability
+along its links. A node gains importance from incoming links, weighted by the
+importance of their source. This connects graph ranking to Markov chains and
+eigenvectors, as described in [Stanford's introduction to PageRank](https://nlp.stanford.edu/IR-book/html/htmledition/the-pagerank-computation-1.html).
+
+The default graph has four nodes, with node 4 having no outgoing links:
+
+```mermaid
+flowchart LR
+    n1[1] --> n2[2]
+    n1 --> n3[3]
+    n2 --> n3
+    n3 --> n1
+    n4[4]
+```
+
+An input matrix entry $W_{ij}$ is the nonnegative weight of the link **from
+node $i$ to node $j$**. Each nonzero row is normalized to sum to one, forming
+the transition matrix $S$. A row with no outgoing weight is a *dangling*
+node; its row is replaced by the personalization distribution $p$.
+This is also the default dangling-node convention in [NetworkX's PageRank](https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.link_analysis.pagerank_alg.pagerank.html).
+
+With probability $d$, the surfer follows this transition; with probability
+$1-d$, it jumps to a node drawn from $p$. The resulting Google matrix is
+row-stochastic:
+
+$$
+G=dS+(1-d)\mathbf{1}p^T.
+$$
+
+Using column vectors for scores, the program deterministically updates the
+whole distribution:
+
+$$
+x_{k+1}=T(x_k)=dS^Tx_k+(1-d)p.
+$$
+
+For a probability vector this equals $G^Tx_k$. At the limit,
+$G^Tx_*=x_*$: PageRank is a normalized eigenvector with eigenvalue one.
+The affine update above also avoids feeding small floating-point errors in
+total probability back into the teleport term.
+
+### Convergence and stopping
+
+Because $S$ is row-stochastic,
+$\|T(x)-T(y)\|_1\leq d\|x-y\|_1$. Thus $d<1$ gives a unique fixed point,
+even for disconnected graphs or personalization vectors containing zeros.
+The starting distribution changes the path to that limit.
+
+At each current state, including step zero, the program computes:
+
+$$
+r_k=\|T(x_k)-x_k\|_1,\qquad
+B_k=\frac{r_k}{1-d}.
+$$
+
+In exact arithmetic, $\|x_k-x_*\|_1\leq B_k$: apply the triangle inequality
+and contraction to get $\|x_k-x_*\|_1\leq r_k+d\|x_k-x_*\|_1$.
+The reported `error_bound` is a floating-point estimate of this bound, not
+an interval-certified guarantee. The program stops at the first state with
+$B_k$ at most `--tolerance`, or after the requested maximum number of updates.
+This tolerance applies to total score error, without an extra factor of the
+number of nodes.
+
+```sh
+c++ -std=c++17 -O2 pagerank.cpp -o pagerank
+./pagerank
+./pagerank --personalization 1,1,1,8
+./pagerank --example sinks --personalization 1,2,3,4 --trace
+./pagerank --example cycle --start 1,0,0,0 --damping 0.99 --max-iterations 20 --trace  # Exits 2: limit reached.
+./pagerank --trace --json
+python3 tests/test_pagerank.py
+```
+
+With the default damping of 0.85 and uniform personalization, the default
+scores are approximately `(0.369324, 0.204582, 0.378476, 0.047619)` in node
+order, so node 3 ranks first. `cycle` links `1→2→3→4→1`; uniform starting
+scores are already stationary, while a concentrated start exposes the
+oscillating convergence. `sinks` has four nodes with no outgoing links;
+from any starting distribution it reaches $p$ in one update in exact
+arithmetic, unless the initial state already meets the tolerance.
+
+Personalization changes both teleport destinations and dangling rows.
+Giving a node zero personalization weight does not exclude incoming link
+probability. Nodes unreachable from the personalization support can have
+zero limiting score. The treatment of nonuniform teleportation is discussed
+in [Stanford's topic-specific PageRank section](https://nlp.stanford.edu/IR-book/html/htmledition/topic-specific-pagerank-1.html).
+
+### Custom graphs and output
+
+Input is a node count followed by the row-major square weight matrix.
+Whitespace separates values; files and standard input are supported:
+
+```sh
+printf '3\n0 2 1\n1 0 0\n0 0 0\n' | ./pagerank --input - --personalization 1,2,1
+```
+
+Limits are 1–16 nodes, damping from 0 through 0.99, tolerance from `1e-12`
+through `1e-3` (default `1e-10`), and 0–10000 updates (default 1000).
+Edge weights must be zero or between `1e-12` and `1e6`. Self-loops are
+allowed. `--personalization` and `--start` accept comma-separated weights
+with the same bounds, exactly one per node, and a positive total. Each is
+normalized independently; both default to uniform. Decimal and scientific
+notation are accepted. Numeric overflow and underflow to zero are rejected;
+finite nonzero subnormal damping values are accepted. Each option may appear
+once. `--input` and `--example` are mutually exclusive; `--help` must appear
+alone, prints usage, and exits 0.
+
+The terminal report shows $S$, $G$, the descending ranking, completed update
+count, residual, error estimate, and stop reason. Node IDs start at one;
+exactly equal scores are ordered by node ID. Numerical accuracy of the
+scores alone does not settle the ordering of almost tied nodes.
+
+JSON includes `personalization`, `initial_scores`, `dangling_nodes`,
+and final `scores` in node order. `ranking` lists `{node, score}` objects.
+`history` is empty unless `--trace` is selected; then it contains step zero
+and every completed update, each with `iteration`, `scores`, `residual_l1`,
+and `error_bound`. `--trace` also adds a terminal table. History's final row
+always describes the reported result.
+
+For a ranking run, exit code 0 means `stop_reason: tolerance` and `converged: true`.
+Exit code 2 means `iteration_limit` and `converged: false`; the complete
+current result is still printed. A zero update budget can therefore return
+either 0 or 2, depending on the initial residual. Invalid options, nonfinite
+or out-of-range values, missing matrix entries, and trailing input return
+1 with diagnostics on stderr and no stdout.
+
+Calculations use double precision and compensated sums. Both formats retain
+`max_digits10`. Scores and matrix rows sum to one up to rounding; the
+iteration does not renormalize its intermediate scores. The damping cap and
+tolerance floor keep this small educational calculation practical, while
+the error estimate retains the floating-point limitation described above.
+Rounding can keep the estimated bound above a strict tolerance until the
+update limit, even when the scores are already close to the exact solution.
+Such a run returns 2; the tolerance is not silently relaxed.
+
+The Python standard-library tests compile into a temporary directory and
+support `CXX`, `CPPFLAGS`, and `CXXFLAGS`. They compare against independent
+exact rational linear-system solutions and iterates, check the stopping
+rule and error estimate, and cover weighted graphs, dangling nodes,
+personalization, invariants, numerical bounds, and invalid input.
+GitHub Actions runs them on Linux and macOS.
+
 ## Galton board
 
 `galton_board.cpp` sends balls through independent, equally likely left/right
