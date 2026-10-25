@@ -32,11 +32,11 @@ struct Options {
     Vector personalization, start;
     double damping = 0.85, tolerance = 1e-10;
     int maxIterations = 1000;
-    bool json = false;
+    bool json = false, trace = false;
 };
 
 struct Model {
-    Matrix transition;
+    Matrix transition, google;
     Vector personalization, initial;
     std::vector<int> dangling;
 };
@@ -50,12 +50,13 @@ struct State {
 struct Result {
     State final;
     bool converged = false;
+    std::vector<State> history;
 };
 
 void usage(std::ostream& out) {
     out << "Usage: pagerank [--example web|cycle|sinks | --input FILE|-]\n"
            "                [--damping D] [--personalization W1,...,Wn] [--start W1,...,Wn]\n"
-           "                [--tolerance E] [--max-iterations N] [--json]\n"
+           "                [--tolerance E] [--max-iterations N] [--trace] [--json]\n"
            "       pagerank --help\n"
            "Input: node count (1..16), then a row-major n*n weight matrix.\n"
            "Rows are source nodes; columns are destinations. Self-loops are allowed.\n"
@@ -63,6 +64,7 @@ void usage(std::ostream& out) {
            "Defaults: web example, damping 0.85, uniform personalization and start.\n"
            "Damping: 0..0.99. Tolerance: 1e-12..1e-3 (default 1e-10).\n"
            "Maximum updates: 0..10000 (default 1000). Each option may appear once.\n"
+           "--trace includes the initial distribution and every completed update.\n"
            "Exit 0: tolerance met; 2: update limit reached; 1: invalid input.\n";
 }
 
@@ -135,6 +137,7 @@ Options options(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json" && !o.json) o.json = true;
+        else if (arg == "--trace" && !o.trace) o.trace = true;
         else if (arg == "--input" && !inputSeen && i + 1 < argc) {
             inputSeen = true;
             o.input = argv[++i];
@@ -218,6 +221,10 @@ Model model(Matrix matrix, const Options& o) {
         } else for (double& value : matrix[i]) value /= total;
     }
     m.transition = std::move(matrix);
+    m.google = m.transition;
+    for (auto& row : m.google)
+        for (std::size_t j = 0; j < count; ++j)
+            row[j] = std::fma(o.damping, row[j], (1 - o.damping) * m.personalization[j]);
     return m;
 }
 
@@ -242,8 +249,12 @@ Result solve(const Model& m, const Options& o) {
         for (std::size_t j = 0; j < next.size(); ++j)
             residual.add(std::abs(next[j] - result.final.scores[j]));
         result.final.residual = residual.value();
+        // In exact arithmetic ||x-x*||_1 <= ||T(x)-x||_1/(1-d), since T is
+        // an L1 contraction with factor d. This floating-point value estimates
+        // that bound; it does not account for rounding with interval arithmetic.
         result.final.bound = result.final.residual / (1 - o.damping);
         result.converged = result.final.bound <= o.tolerance;
+        if (o.trace) result.history.push_back(result.final);
         if (result.converged || result.final.iteration == o.maxIterations) return result;
         result.final.scores = std::move(next);
         ++result.final.iteration;
@@ -285,6 +296,11 @@ void printJson(const Model& m, const Options& o, const Result& r) {
         if (i != 0) std::cout << ',';
         array(m.transition[i]);
     }
+    std::cout << "],\"google_matrix\":[";
+    for (std::size_t i = 0; i < m.google.size(); ++i) {
+        if (i != 0) std::cout << ',';
+        array(m.google[i]);
+    }
     std::cout << "],\"scores\":";
     array(r.final.scores);
     std::cout << ",\"ranking\":[";
@@ -296,22 +312,43 @@ void printJson(const Model& m, const Options& o, const Result& r) {
     }
     std::cout << "],\"iterations\":" << r.final.iteration << ",\"residual_l1\":" << r.final.residual
               << ",\"error_bound\":" << r.final.bound << ",\"converged\":" << (r.converged ? "true" : "false")
-              << ",\"stop_reason\":\"" << (r.converged ? "tolerance" : "iteration_limit") << "\"}\n";
+              << ",\"stop_reason\":\"" << (r.converged ? "tolerance" : "iteration_limit") << "\",\"history\":[";
+    first = true;
+    for (const auto& state : r.history) {
+        if (!first) std::cout << ',';
+        first = false;
+        std::cout << "{\"iteration\":" << state.iteration << ",\"scores\":";
+        array(state.scores);
+        std::cout << ",\"residual_l1\":" << state.residual << ",\"error_bound\":" << state.bound << '}';
+    }
+    std::cout << "]}\n";
 }
 
 void printText(const Model& m, const Options& o, const Result& r) {
-    std::cout << "PageRank: the stationary distribution of a random surfer\nDamping: " << o.damping
+    std::cout << "PageRank: power iteration for a stationary distribution\nDamping: " << o.damping
               << "\nPersonalization: ";
     array(m.personalization);
+    std::cout << "\nInitial scores: ";
+    array(m.initial);
     std::cout << "\nDangling nodes (1-based): ";
     array(m.dangling);
     std::cout << "\nTransition matrix (rows: from, columns: to):\n";
     for (const auto& row : m.transition) { array(row); std::cout << '\n'; }
+    std::cout << "Google matrix G (rows: from, columns: to):\n";
+    for (const auto& row : m.google) { array(row); std::cout << '\n'; }
     std::cout << "node  score\n";
     for (auto node : ranking(r.final.scores)) std::cout << node + 1 << "  " << r.final.scores[node] << '\n';
     std::cout << "Iterations: " << r.final.iteration << "\nResidual L1: " << r.final.residual
               << "\nError bound estimate: " << r.final.bound
               << "\nStop: " << (r.converged ? "tolerance" : "iteration_limit") << '\n';
+    if (o.trace) {
+        std::cout << "iteration  residual_l1  error_bound  scores\n";
+        for (const auto& state : r.history) {
+            std::cout << state.iteration << "  " << state.residual << "  " << state.bound << "  ";
+            array(state.scores);
+            std::cout << '\n';
+        }
+    }
 }
 } // namespace
 
