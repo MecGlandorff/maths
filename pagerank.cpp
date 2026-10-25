@@ -105,7 +105,9 @@ double decimal(const std::string& token) {
     errno = 0;
     char* end = nullptr;
     const double value = std::strtod(token.c_str(), &end);
-    if (errno == ERANGE || end != token.c_str() + token.size() || !std::isfinite(value))
+    // Finite nonzero subnormals are valid damping values. Reject overflow and
+    // underflow to zero, so an unrepresentable nonzero value is not silently zero.
+    if ((errno == ERANGE && value == 0) || end != token.c_str() + token.size() || !std::isfinite(value))
         throw std::invalid_argument("Expected a finite, representable number.");
     return value;
 }

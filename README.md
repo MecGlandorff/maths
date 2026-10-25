@@ -1098,8 +1098,9 @@ Edge weights must be zero or between `1e-12` and `1e6`. Self-loops are
 allowed. `--personalization` and `--start` accept comma-separated weights
 with the same bounds, exactly one per node, and a positive total. Each is
 normalized independently; both default to uniform. Decimal and scientific
-notation are accepted. Each option may appear once; `--input` and
-`--example` are mutually exclusive, and `--help` must appear alone.
+notation are accepted. Numeric overflow and underflow to zero are rejected;
+finite nonzero subnormal damping values are accepted. Each option may appear
+once. `--input` and `--example` are mutually exclusive; `--help` must appear alone.
 
 The terminal report shows $S$, $G$, the descending ranking, completed update
 count, residual, error estimate, and stop reason. Node IDs start at one;
@@ -1125,6 +1126,9 @@ Calculations use double precision and compensated sums. Both formats retain
 iteration does not renormalize its intermediate scores. The damping cap and
 tolerance floor keep this small educational calculation practical, while
 the error estimate retains the floating-point limitation described above.
+Rounding can keep the estimated bound above a strict tolerance until the
+update limit, even when the scores are already close to the exact solution.
+Such a run returns 2; the tolerance is not silently relaxed.
 
 The Python standard-library tests compile into a temporary directory and
 support `CXX`, `CPPFLAGS`, and `CXXFLAGS`. They compare against independent
