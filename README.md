@@ -1138,6 +1138,142 @@ rule and error estimate, and cover weighted graphs, dangling nodes,
 personalization, invariants, numerical bounds, and invalid input.
 GitHub Actions runs them on Linux and macOS.
 
+## Backpropagation and a neural network for XOR
+
+`backpropagation.cpp` follows the chain rule through a small binary classifier:
+an affine map, a hidden layer of `tanh` units, and a sigmoid output. It displays
+the forward values and every stage of the backward pass. Optional full-batch
+gradient descent shows how those derivatives become learning updates.
+
+For $n$ samples with $d$ features and $h$ hidden units, the shapes are
+$X\in\mathbb{R}^{n\times d}$, $W_1\in\mathbb{R}^{d\times h}$,
+$b_1\in\mathbb{R}^h$, $w_2\in\mathbb{R}^h$, and scalar $b_2$.
+Biases are broadcast across rows:
+
+$$
+Z=XW_1+b_1,\qquad H=\tanh(Z),\qquad s=Hw_2+b_2,\qquad p=\sigma(s).
+$$
+
+The loss is mean binary cross-entropy, allowing soft targets $0\leq y_i\leq1$:
+
+$$
+L=\frac1n\sum_i\left[\log(1+e^{s_i})-y_i s_i\right].
+$$
+
+Backpropagation first finds the derivative at the logits, then carries it
+through the output weights and the elementwise `tanh`. With $\odot$ denoting
+elementwise multiplication and $\mathbf{1}$ the length-$n$ vector of ones:
+
+$$
+\delta=\frac{p-y}{n},\qquad
+E=(\delta w_2^T)\odot(1-H\odot H),
+$$
+
+$$
+\nabla_{w_2}L=H^T\delta,\quad \nabla_{b_2}L=\mathbf{1}^T\delta,\quad
+\nabla_{W_1}L=X^TE,\quad \nabla_{b_1}L=\mathbf{1}^TE,\quad
+\nabla_XL=EW_1^T.
+$$
+
+The factor $1/n$ is applied once, in $\delta$. Input gradients describe the
+sensitivity of the same mean loss; training changes only the weights and
+biases. Each update uses $\theta\leftarrow\theta-\eta\nabla_\theta L$ with
+all gradients evaluated at the same pre-update parameters. See
+[Stanford's explanation of backpropagation](https://cs231n.github.io/optimization-2/)
+for the computational-graph view of this chain rule.
+
+```sh
+c++ -std=c++17 -O2 backpropagation.cpp -o backpropagation
+./backpropagation
+./backpropagation --steps 5 --rate 0.5 --trace
+./backpropagation --steps 1000 --json
+python3 tests/test_backpropagation.py
+```
+
+The deterministic XOR demo uses inputs `(-1,-1), (-1,1), (1,-1), (1,1)` with
+targets `(0,1,1,0)`. Initial parameters are
+`W1=[[0.5,-0.7,0.3],[-0.4,0.6,0.8]]`, `b1=[0.1,-0.2,0.05]`,
+`w2=[0.7,-0.5,0.4]`, and `b2=-0.1`. Its loss starts near `0.763389`.
+After 1000 updates at the default rate of 1, the loss is about `0.005108`
+and the four probabilities are approximately `(0.002568, 0.993221, 0.996114,
+0.007141)`. The hidden layer lets this classifier represent a nonlinear
+decision boundary. These results describe this particular initialization;
+the nonconvex objective does not guarantee convergence or a loss decrease
+at every update for arbitrary inputs and learning rates.
+
+### Network input and output
+
+`--input FILE` reads whitespace-separated values; `--input -` reads standard
+input. The header is `n d h`, followed by row-major `X` (`n*d` values), targets
+`y` (`n`), `W1` (`d*h`), `b1` (`h`), `w2` (`h`), and `b2` (one value).
+For example, this single-sample, single-hidden-unit model starts with zero
+parameters, probability 0.5, and loss $\log 2$:
+
+```sh
+printf '1 1 1\n2\n1\n0\n0\n0\n0\n' | ./backpropagation --input - --steps 1 --trace
+```
+
+Bounds are 1–32 samples, 1–8 features, and 1–8 hidden units. Inputs and
+initial parameters must lie in `[-10,10]`; targets must lie in `[0,1]`.
+Updated parameters may leave the initial interval. `--steps` accepts 0–5000
+(default 0, which only analyzes the initial network); `--rate` accepts
+`1e-6`–1 (default 1). Training always performs the requested number of
+updates, without early stopping. Each option may appear once. Dimensions
+and `--steps` accept decimal digits only. Network values and `--rate` accept
+decimal or scientific notation within the bounds above. Finite nonzero
+subnormal network values are accepted; overflow and underflow to zero during
+input conversion are rejected.
+
+Both output formats retain `max_digits10` precision. The terminal report
+labels each intermediate and derivative. JSON contains dimensions, `steps`,
+`learning_rate`, `initial_loss`, `inputs`, `targets`, and final `parameters`.
+Its `forward` object contains `hidden_preactivations`, `hidden_activations`,
+`hidden_slopes`, `logits`, `probabilities`, unaveraged `sample_losses`, and
+mean `loss`. The `backward` object contains `logit_gradients` ($\delta$),
+`hidden_gradients` ($\delta w_2^T$), `hidden_preactivation_gradients` ($E$),
+parameter derivatives `w1`, `b1`, `w2`, `b2`, input derivatives `inputs`, and
+`parameter_gradient_norm`. This Euclidean norm includes only learned
+parameter derivatives. All reported derivatives are recomputed at the final
+parameters, including after the last update.
+
+`--trace` adds a terminal table or a JSON `trace` array containing step zero
+and every completed update. Each entry has `step`, `loss`, and
+`parameter_gradient_norm`; the last entry agrees with the final report.
+Without this flag, JSON omits `trace`. Successful analysis or training exits
+0, which does not assert convergence. `--help` must appear alone and exits 0.
+Invalid options, dimensions, numbers, missing values, unreadable files, or
+trailing input exit 1 with diagnostics on stderr and no stdout.
+
+### Numerical details and checks
+
+The implementation evaluates binary cross-entropy directly from logits,
+using `log1p(exp(-abs(s)))` and a sign-dependent linear term. This avoids
+taking logs of rounded probabilities, as explained in
+[PyTorch's BCEWithLogitsLoss documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html).
+The derivative uses a sign-dependent expression for $p-y$ to retain small
+nonzero gradients even when a displayed probability rounds to 1. Similarly,
+the `tanh` slope uses $4t/(1+t)^2$, where $t=e^{-2|Z|}$, instead of subtracting
+the square of an activation that may already have rounded to 1.
+These are floating-point approximations to derivatives of the smooth model;
+extremely small intermediate values can still underflow to zero.
+
+The bounded input and training budget keep arithmetic finite: each output
+weight and output bias changes by at most 1 per update, so its magnitude
+stays at most 5010 in exact arithmetic. Since $|\tanh Z|\leq1$, logits stay
+within 45090. Hidden weight updates are bounded by ten times the current
+output-weight bound, keeping hidden preactivations below $1.1\times10^{10}$.
+Exponentials always have nonpositive arguments in the implementation.
+These loose bounds prevent overflow; they do not promise accurate relative
+errors for tiny gradients or guarantee successful training.
+
+The standard-library Python suite compiles in a temporary directory and
+accepts `CXX`, `CPPFLAGS`, and `CXXFLAGS`. It checks forward values and the
+chain rule against 90-digit Decimal calculations, and checks all parameter
+types plus input derivatives with independent central finite differences.
+It also covers batch scaling, simultaneous updates, final-state derivatives,
+XOR learning, saturation, trace consistency, supported limits, and invalid
+input. GitHub Actions runs the suite on Linux and macOS.
+
 ## Galton board
 
 `galton_board.cpp` sends balls through independent, equally likely left/right
