@@ -1218,9 +1218,11 @@ initial parameters must lie in `[-10,10]`; targets must lie in `[0,1]`.
 Updated parameters may leave the initial interval. `--steps` accepts 0–5000
 (default 0, which only analyzes the initial network); `--rate` accepts
 `1e-6`–1 (default 1). Training always performs the requested number of
-updates, without early stopping. Each option may appear once. Decimal and
-scientific notation are accepted, including finite nonzero subnormals;
-overflow and underflow to zero during input conversion are rejected.
+updates, without early stopping. Each option may appear once. Dimensions
+and `--steps` accept decimal digits only. Network values and `--rate` accept
+decimal or scientific notation within the bounds above. Finite nonzero
+subnormal network values are accepted; overflow and underflow to zero during
+input conversion are rejected.
 
 Both output formats retain `max_digits10` precision. The terminal report
 labels each intermediate and derivative. JSON contains dimensions, `steps`,
