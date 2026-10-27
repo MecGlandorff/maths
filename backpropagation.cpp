@@ -29,7 +29,15 @@ struct Data {
 
 struct Options {
     std::string input;
+    int steps = 0;
+    double rate = 1;
+    bool trace = false;
     bool json = false;
+};
+
+struct TraceEntry {
+    int step;
+    double loss, parameterGradientNorm;
 };
 
 struct Result {
@@ -42,11 +50,13 @@ struct Result {
 };
 
 void usage(std::ostream& out) {
-    out << "Usage: backpropagation [--input FILE|-] [--json]\n"
+    out << "Usage: backpropagation [--input FILE|-] [--steps N] [--rate R] [--trace] [--json]\n"
            "       backpropagation --help\n"
            "Default: a fixed 2-input, 3-hidden-unit network on XOR.\n"
            "Input: n d h, then row-major X (n*d), y (n), W1 (d*h), b1 (h), w2 (h), b2.\n"
            "Limits: n=1..32, d,h=1..8; inputs/initial parameters in [-10,10], y in [0,1].\n"
+           "Training: steps=0..5000 (default 0), rate=1e-6..1 (default 1).\n"
+           "--trace includes step zero and each completed full-batch update.\n"
            "Reports the mean binary cross-entropy loss and its derivatives.\n";
 }
 
@@ -97,15 +107,26 @@ double number(const std::string& token) {
 
 Options options(int argc, char** argv) {
     Options result;
-    bool inputSeen = false;
+    bool inputSeen = false, stepsSeen = false, rateSeen = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--json" && !result.json) {
             result.json = true;
+        } else if (arg == "--trace" && !result.trace) {
+            result.trace = true;
         } else if (arg == "--input" && !inputSeen && i + 1 < argc) {
             inputSeen = true;
             result.input = argv[++i];
             if (result.input.empty()) throw std::invalid_argument("Empty input filename.");
+        } else if (arg == "--steps" && !stepsSeen && i + 1 < argc) {
+            stepsSeen = true;
+            result.steps = integer(argv[++i]);
+            if (result.steps > 5000) throw std::invalid_argument("Steps must be in 0..5000.");
+        } else if (arg == "--rate" && !rateSeen && i + 1 < argc) {
+            rateSeen = true;
+            result.rate = number(argv[++i]);
+            if (result.rate < 1e-6 || result.rate > 1)
+                throw std::invalid_argument("Learning rate must be in 1e-6..1.");
         } else {
             throw std::invalid_argument("Unknown, repeated, or incomplete option.");
         }
@@ -221,6 +242,18 @@ Result evaluate(const Data& data, const Parameters& parameters) {
     return result;
 }
 
+void update(Parameters& parameters, const Parameters& gradients, double rate) {
+    // Every gradient is from the same pre-update state; inputs and targets stay fixed.
+    for (std::size_t j = 0; j < parameters.w1.size(); ++j)
+        for (std::size_t k = 0; k < parameters.w1[j].size(); ++k)
+            parameters.w1[j][k] = std::fma(-rate, gradients.w1[j][k], parameters.w1[j][k]);
+    for (std::size_t k = 0; k < parameters.b1.size(); ++k) {
+        parameters.b1[k] = std::fma(-rate, gradients.b1[k], parameters.b1[k]);
+        parameters.w2[k] = std::fma(-rate, gradients.w2[k], parameters.w2[k]);
+    }
+    parameters.b2 = std::fma(-rate, gradients.b2, parameters.b2);
+}
+
 void value(double x) {
     std::cout << (x == 0 ? 0 : x);
 }
@@ -254,10 +287,12 @@ void parameterFields(const Parameters& p) {
     value(p.b2);
 }
 
-void printJson(const Data& data, const Parameters& parameters, const Result& r) {
+void printJson(const Data& data, const Parameters& parameters, const Result& r,
+               const Options& config, double initialLoss, const std::vector<TraceEntry>& trace) {
     std::cout << "{\"samples\":" << data.samples << ",\"features\":" << data.features
-              << ",\"hidden_units\":" << data.hiddenUnits << ",\"steps\":0,\"learning_rate\":1"
-              << ",\"initial_loss\":" << r.loss << ",\"inputs\":";
+              << ",\"hidden_units\":" << data.hiddenUnits << ",\"steps\":" << config.steps
+              << ",\"learning_rate\":" << config.rate
+              << ",\"initial_loss\":" << initialLoss << ",\"inputs\":";
     value(data.inputs);
     std::cout << ",\"targets\":";
     value(data.targets);
@@ -289,7 +324,17 @@ void printJson(const Data& data, const Parameters& parameters, const Result& r) 
     value(r.inputGradients);
     std::cout << ",\"parameter_gradient_norm\":";
     value(r.parameterGradientNorm);
-    std::cout << "}}\n";
+    std::cout << '}';
+    if (config.trace) {
+        std::cout << ",\"trace\":[";
+        for (std::size_t i = 0; i < trace.size(); ++i) {
+            if (i) std::cout << ',';
+            std::cout << "{\"step\":" << trace[i].step << ",\"loss\":" << trace[i].loss
+                      << ",\"parameter_gradient_norm\":" << trace[i].parameterGradientNorm << '}';
+        }
+        std::cout << ']';
+    }
+    std::cout << "}\n";
 }
 
 template <typename T>
@@ -299,9 +344,12 @@ void line(const char* label, const T& x) {
     std::cout << '\n';
 }
 
-void printHuman(const Data& data, const Parameters& parameters, const Result& r) {
+void printHuman(const Data& data, const Parameters& parameters, const Result& r,
+                const Options& config, double initialLoss, const std::vector<TraceEntry>& trace) {
     std::cout << "Backpropagation: " << data.samples << " samples, " << data.features
               << " inputs, " << data.hiddenUnits << " tanh hidden units, one sigmoid output\n";
+    std::cout << "Completed updates: " << config.steps << "; learning rate: " << config.rate << '\n';
+    line("Initial loss", initialLoss);
     line("Inputs X", data.inputs);
     line("Targets y", data.targets);
     line("W1", parameters.w1);
@@ -324,6 +372,11 @@ void printHuman(const Data& data, const Parameters& parameters, const Result& r)
     line("dL/db2", r.gradients.b2);
     line("dL/dX", r.inputGradients);
     line("Parameter gradient norm", r.parameterGradientNorm);
+    if (config.trace) {
+        std::cout << "Training trace (step, loss, parameter gradient norm):\n";
+        for (const auto& entry : trace)
+            std::cout << entry.step << ' ' << entry.loss << ' ' << entry.parameterGradientNorm << '\n';
+    }
 }
 }  // namespace
 
@@ -342,10 +395,19 @@ int main(int argc, char** argv) {
             if (!input) throw std::invalid_argument("Could not open input file.");
             data = readData(input);
         }
-        const Result result = evaluate(data, data.parameters);
+        Parameters parameters = data.parameters;
+        Result result = evaluate(data, parameters);
+        const double initialLoss = result.loss;
+        std::vector<TraceEntry> trace;
+        if (config.trace) trace.push_back({0, result.loss, result.parameterGradientNorm});
+        for (int step = 1; step <= config.steps; ++step) {
+            update(parameters, result.gradients, config.rate);
+            result = evaluate(data, parameters);
+            if (config.trace) trace.push_back({step, result.loss, result.parameterGradientNorm});
+        }
         std::cout << std::setprecision(std::numeric_limits<double>::max_digits10);
-        if (config.json) printJson(data, data.parameters, result);
-        else printHuman(data, data.parameters, result);
+        if (config.json) printJson(data, parameters, result, config, initialLoss, trace);
+        else printHuman(data, parameters, result, config, initialLoss, trace);
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;
