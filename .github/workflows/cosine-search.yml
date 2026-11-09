@@ -1,0 +1,31 @@
+name: Cosine similarity
+
+on:
+  pull_request:
+    paths:
+      - cosine_search.cpp
+      - tests/test_cosine_search.py
+      - .github/workflows/cosine-search.yml
+  push:
+    branches: [master]
+    paths:
+      - cosine_search.cpp
+      - tests/test_cosine_search.py
+      - .github/workflows/cosine-search.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Cosine similarity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 tests/test_cosine_search.py
