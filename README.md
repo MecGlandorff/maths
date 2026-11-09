@@ -1274,6 +1274,42 @@ It also covers batch scaling, simultaneous updates, final-state derivatives,
 XOR learning, saturation, trace consistency, supported limits, and invalid
 input. GitHub Actions runs the suite on Linux and macOS.
 
+## Cosine similarity
+
+`cosine_search.cpp` ranks vectors by how closely they point in the same
+direction as a query:
+
+$$
+\operatorname{cosine}(q,v)=\frac{q\cdot v}{\|q\|\,\|v\|}.
+$$
+
+A score of 1 means the same direction, 0 means perpendicular, and -1 means
+opposite directions. Multiplying either vector by a positive number does
+not change the score.
+
+The first nonblank input line is the query; each following line is a
+candidate. All vectors need the same dimension, finite values, and a
+nonzero length. Blank lines are ignored.
+
+```sh
+c++ -std=c++17 -O2 cosine_search.cpp -o cosine_search
+printf '1 1 0\n1 0 0\n1 1 0\n-1 -1 0\n0 0 1\n' | ./cosine_search
+```
+
+Output lists candidate numbers (starting at 1) and scores, highest first:
+
+```text
+2 1.000000
+1 0.707107
+4 0.000000
+3 -1.000000
+```
+
+Sorting uses unrounded scores; exact ties keep input order. The calculation
+uses double precision and scales vectors before normalizing them to avoid
+overflow. Invalid input exits with code 1 and an error on stderr.
+Run the tests with `python3 tests/test_cosine_search.py`.
+
 ## Galton board
 
 `galton_board.cpp` sends balls through independent, equally likely left/right
